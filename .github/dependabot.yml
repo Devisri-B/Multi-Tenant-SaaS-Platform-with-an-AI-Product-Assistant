@@ -1,18 +1,57 @@
 version: 2
+
+# Grouped updates keep the PR count low: one PR per ecosystem per week for
+# routine bumps, and separate PRs only for major versions that need a human to
+# read the changelog.
 updates:
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      backend-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # passlib 1.7.4 is unmaintained and calls bcrypt.hashpw() with a >72-byte
+      # probe string during backend detection. bcrypt >= 5 raises instead of
+      # truncating, so the import itself dies and every login breaks.
+      # Revisit only when passlib ships 1.8, or when auth moves to bcrypt directly.
+      - dependency-name: bcrypt
+        versions: [">=5.0.0"]
+      # Pinned transitively by langchain; bumping it alone makes the resolver
+      # unsatisfiable. It moves when langchain moves.
+      - dependency-name: langchain-text-splitters
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      frontend-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      frontend-tooling-major:
+        patterns: ["eslint*", "@typescript-eslint/*", "typescript", "vite", "@vitejs/*"]
+        update-types: ["major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
