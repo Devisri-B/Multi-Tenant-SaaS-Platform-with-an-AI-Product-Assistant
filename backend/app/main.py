@@ -77,7 +77,11 @@ def create_app() -> FastAPI:
             {
                 "loc": [str(part) for part in error.get("loc", ())],
                 "type": error.get("type", "value_error"),
-                "message": error.get("msg", "Invalid value."),
+                # Pydantic prefixes custom validator failures with "Value error, ";
+                # the raw sentence reads better in a form field.
+                "message": str(error.get("msg", "Invalid value.")).removeprefix(
+                    "Value error, "
+                ),
             }
             for error in exc.errors()
         ]

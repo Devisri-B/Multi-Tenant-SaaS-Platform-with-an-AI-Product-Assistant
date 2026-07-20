@@ -73,6 +73,35 @@ interface RequestOptions {
   _retried?: boolean
 }
 
+/** Turn a field path like ["body", "workspace_name"] into "Workspace name". */
+function humaniseLocation(loc: string[]): string | null {
+  const field = loc.filter((part) => part !== 'body' && part !== 'query' && part !== 'path').pop()
+  if (!field || /^\d+$/.test(field)) return null
+  const spaced = field.replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+/**
+ * The backend answers a 422 with a generic message plus per-field detail.
+ * Surface the detail, otherwise the user sees "the payload is invalid" and has
+ * no idea which field to fix.
+ */
+function expandValidationErrors(body: ApiErrorBody): string {
+  const errors = body.detail?.errors
+  if (!Array.isArray(errors) || errors.length === 0) return body.message
+
+  const lines = errors
+    .map((entry) => {
+      const { loc, message } = entry as { loc?: string[]; message?: string }
+      if (!message) return null
+      const field = Array.isArray(loc) ? humaniseLocation(loc) : null
+      return field ? `${field}: ${message}` : message
+    })
+    .filter((line): line is string => Boolean(line))
+
+  return lines.length > 0 ? lines.join(' · ') : body.message
+}
+
 async function parseError(response: Response): Promise<ApiError> {
   let body: ApiErrorBody = {
     code: 'unknown_error',
@@ -82,6 +111,9 @@ async function parseError(response: Response): Promise<ApiError> {
     const parsed = (await response.json()) as Partial<ApiErrorBody>
     if (parsed && typeof parsed.message === 'string') {
       body = { code: parsed.code ?? 'unknown_error', message: parsed.message, detail: parsed.detail }
+      if (body.code === 'validation_error') {
+        body = { ...body, message: expandValidationErrors(body) }
+      }
     }
   } catch {
     // Response had no JSON body — keep the generic message.

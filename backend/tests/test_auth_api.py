@@ -120,3 +120,27 @@ def test_password_change_requires_current_password(client, owner):
         json={"current_password": "wrong", "new_password": "N3wPassword!"},
     )
     assert response.status_code == 401
+
+
+def test_validation_errors_name_the_offending_field(client):
+    """A 422 must say which field failed, not just that the payload is bad."""
+    response = client.post(REGISTER, json=_payload(password="short"))
+    assert response.status_code == 422
+
+    body = response.json()
+    assert body["code"] == "validation_error"
+
+    errors = body["detail"]["errors"]
+    assert any("password" in error["loc"] for error in errors)
+    message = next(e["message"] for e in errors if "password" in e["loc"])
+    assert "10 characters" in message
+    assert not message.startswith("Value error")
+
+
+def test_validation_error_reports_every_bad_field(client):
+    response = client.post(
+        REGISTER, json={"email": "not-an-email", "password": "short", "workspace_name": "x"}
+    )
+    assert response.status_code == 422
+    fields = {error["loc"][-1] for error in response.json()["detail"]["errors"]}
+    assert {"email", "password", "workspace_name"} <= fields
