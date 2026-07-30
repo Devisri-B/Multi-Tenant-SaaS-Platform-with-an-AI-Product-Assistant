@@ -9,7 +9,7 @@ pgvector==0.3.6
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.20
+python-multipart==0.0.32
 email-validator==2.2.0
 langchain==0.3.13
 langchain-core==0.3.28
