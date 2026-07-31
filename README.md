@@ -10,6 +10,42 @@ React · TypeScript · Vite · LangChain · Docker · GitHub Actions
 
 ---
 
+## The assistant
+
+Every answer is built only from chunks retrieved out of that workspace's own
+documents, and each one carries its source and a similarity score. Here the
+answer to a question about rate limits cites the API reference at 35% and the
+roles FAQ at 16% — you can see exactly which passage produced which claim.
+
+![The product assistant answering a question with two scored citations](docs/screenshots/assistant.png)
+
+## Documentation
+
+Uploads are chunked, embedded and indexed on arrival. Status moves through
+`pending → processing → indexed`, and a failed document keeps its error message
+rather than silently disappearing.
+
+![The documentation page listing two indexed documents with chunk counts and sizes](docs/screenshots/documentation.png)
+
+## Workspace overview
+
+Usage counters for the selected tenant — members, documents, how many are
+indexed, chunks embedded, and conversations held.
+
+![Workspace overview showing member, document, chunk and conversation counts](docs/screenshots/overview.png)
+
+## Members and settings
+
+Roles are cumulative (`viewer < member < admin < owner`) and the UI only renders
+controls the caller's role permits. Settings is also where additional
+workspaces are created — each one a separate tenant with its own index.
+
+| Members | Settings |
+| --- | --- |
+| ![Member list with role and status columns and an invite form](docs/screenshots/members.png) | ![Settings page with workspace rename, workspace creation and password change](docs/screenshots/settings.png) |
+
+---
+
 ## Why it is built this way
 
 **Shared-schema multi-tenancy.** Every tenant-owned table carries a
