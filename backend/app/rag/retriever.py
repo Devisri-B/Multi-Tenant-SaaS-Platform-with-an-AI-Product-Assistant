@@ -12,7 +12,7 @@ import math
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -41,11 +41,18 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     return dot / (norm_left * norm_right)
 
 
-def _retrieve_pgvector(
-    db: Session, tenant_id: uuid.UUID, query_embedding: list[float], top_k: int
-) -> list[RetrievedChunk]:
+def build_pgvector_query(
+    tenant_id: uuid.UUID, query_embedding: list[float], top_k: int
+) -> Select:
+    """Build the nearest-neighbour statement pushed down to pgvector.
+
+    Kept separate from execution so it can be compiled against the Postgres
+    dialect in tests without a live server — the SQLite test path never
+    exercises this branch, and a missing operator only surfaces at query-build
+    time.
+    """
     distance = DocumentChunk.embedding.cosine_distance(query_embedding)
-    stmt = (
+    return (
         select(
             DocumentChunk.id,
             DocumentChunk.document_id,
@@ -63,6 +70,12 @@ def _retrieve_pgvector(
         .order_by(distance)
         .limit(top_k)
     )
+
+
+def _retrieve_pgvector(
+    db: Session, tenant_id: uuid.UUID, query_embedding: list[float], top_k: int
+) -> list[RetrievedChunk]:
+    stmt = build_pgvector_query(tenant_id, query_embedding, top_k)
     return [
         RetrievedChunk(
             chunk_id=row.id,

@@ -12,7 +12,7 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import CHAR, JSON, TypeDecorator
+from sqlalchemy import CHAR, JSON, Float, TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
@@ -60,10 +60,28 @@ class JSONType(TypeDecorator):
 
 
 class Vector(TypeDecorator):
-    """Embedding column backed by pgvector on Postgres, JSON text on SQLite."""
+    """Embedding column backed by pgvector on Postgres, JSON text on SQLite.
+
+    A ``TypeDecorator`` does not inherit the comparator of the type it wraps,
+    so pgvector's distance operators have to be re-declared here. Without this
+    ``DocumentChunk.embedding.cosine_distance(...)`` raises ``AttributeError``
+    at query-build time on Postgres.
+    """
 
     impl = JSON
     cache_ok = True
+
+    class comparator_factory(TypeDecorator.Comparator):  # noqa: N801
+        """Expose pgvector's distance operators on the decorated column."""
+
+        def l2_distance(self, other: Any):
+            return self.op("<->", return_type=Float)(other)
+
+        def max_inner_product(self, other: Any):
+            return self.op("<#>", return_type=Float)(other)
+
+        def cosine_distance(self, other: Any):
+            return self.op("<=>", return_type=Float)(other)
 
     def __init__(self, dimensions: int | None = None, **kwargs: Any) -> None:
         self.dimensions = dimensions or settings.EMBEDDING_DIMENSIONS
