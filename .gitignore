@@ -40,3 +40,8 @@ uploads/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Signing key handed over during setup — move to ~/.ssh and delete from here.
+nimbus_signing_key
+nimbus_signing_key.pub
+allowed_signers
