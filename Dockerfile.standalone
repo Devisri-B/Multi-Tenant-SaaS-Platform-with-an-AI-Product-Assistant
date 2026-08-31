@@ -7,7 +7,6 @@ COPY frontend/package.json ./
 RUN npm install --no-audit --no-fund
 
 COPY frontend/src ./src
-COPY frontend/public ./public
 COPY frontend/index.html ./
 COPY frontend/tsconfig.json ./
 COPY frontend/vite.config.ts ./
