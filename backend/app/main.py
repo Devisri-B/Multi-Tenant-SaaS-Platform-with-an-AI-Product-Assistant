@@ -103,7 +103,12 @@ def create_app() -> FastAPI:
         if local_dist.exists() and (local_dist / "index.html").exists():
             static_dir = local_dist
 
-    if settings.ENVIRONMENT != "test" and static_dir.exists() and (static_dir / "index.html").exists():
+    has_spa = (
+        settings.ENVIRONMENT != "test"
+        and static_dir.exists()
+        and (static_dir / "index.html").exists()
+    )
+    if has_spa:
         assets_dir = static_dir / "assets"
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
