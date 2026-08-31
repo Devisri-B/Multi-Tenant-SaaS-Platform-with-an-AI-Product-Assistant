@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.api.v1.router import api_router
@@ -94,14 +97,38 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.get("/", include_in_schema=False)
-    async def root() -> dict:
-        return {
-            "name": settings.APP_NAME,
-            "version": "0.1.0",
-            "docs": "/docs",
-            "api": settings.API_V1_PREFIX,
-        }
+    static_dir = Path(os.getenv("STATIC_DIR", "/app/static"))
+    if not static_dir.exists():
+        local_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+        if local_dist.exists() and (local_dist / "index.html").exists():
+            static_dir = local_dist
+
+    if settings.ENVIRONMENT != "test" and static_dir.exists() and (static_dir / "index.html").exists():
+        assets_dir = static_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str) -> FileResponse | JSONResponse:
+            if (
+                full_path.startswith("api/")
+                or full_path.startswith("docs")
+                or full_path.startswith("redoc")
+            ):
+                return JSONResponse(status_code=404, content={"message": "Not Found"})
+            target = static_dir / full_path
+            if target.is_file():
+                return FileResponse(target)
+            return FileResponse(static_dir / "index.html")
+    else:
+        @app.get("/", include_in_schema=False)
+        async def root() -> dict:
+            return {
+                "name": settings.APP_NAME,
+                "version": "0.1.0",
+                "docs": "/docs",
+                "api": settings.API_V1_PREFIX,
+            }
 
     return app
 
