@@ -6,6 +6,8 @@ powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/
 
 **Stack** — Python · FastAPI · LangGraph · LangChain · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
 
+> 🚀 **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
+> 🔑 **Seeded Demo Account**: Email: `owner@nimbus.dev` · Password: `DemoPassw0rd`
 
 ---
 
