@@ -89,6 +89,19 @@ export interface DocumentRecord {
   created_at: string
 }
 
+export interface DocumentChunk {
+  id: string
+  document_id: string
+  ordinal: number
+  content: string
+  token_estimate: number
+}
+
+export interface DocumentDetail extends DocumentRecord {
+  content: string
+  chunks: DocumentChunk[]
+}
+
 export interface Citation {
   document_id?: string | null
   document_title: string

@@ -161,3 +161,39 @@ def test_documents_do_not_leak_across_tenants(client, owner, other_owner):
 def test_identical_content_in_two_tenants_is_allowed(client, owner, other_owner):
     assert create_doc(client, owner).status_code == 201
     assert create_doc(client, other_owner).status_code == 201
+
+
+def test_get_document_detail_returns_content_and_chunks(client, owner):
+    doc_id = create_doc(client, owner, title="View Test", content="Content to view.").json()["id"]
+    response = client.get(f"{docs_url(owner.tenant_id)}/{doc_id}", headers=owner.headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "View Test"
+    assert "Content to view." in data["content"]
+    assert len(data["chunks"]) >= 1
+    assert data["chunks"][0]["ordinal"] == 0
+
+
+def test_member_can_update_document_title_and_content(client, member):
+    doc_res = create_doc(client, member, title="Original", content="Original body text.")
+    doc_id = doc_res.json()["id"]
+    response = client.patch(
+        f"{docs_url(member.tenant_id)}/{doc_id}",
+        headers=member.headers,
+        json={"title": "Updated Title", "content": "Updated body text with new information."},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "Updated Title"
+    assert "Updated body text" in data["content"]
+    assert data["status"] == "indexed"
+
+
+def test_viewer_cannot_update_document(client, member, viewer):
+    doc_id = create_doc(client, member, title="Doc", content="Body text.").json()["id"]
+    response = client.patch(
+        f"{docs_url(viewer.tenant_id)}/{doc_id}",
+        headers=viewer.headers,
+        json={"title": "Hacked Title"},
+    )
+    assert response.status_code == 403

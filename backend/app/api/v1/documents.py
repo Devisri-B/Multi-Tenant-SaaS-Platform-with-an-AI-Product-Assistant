@@ -12,7 +12,9 @@ from app.schemas.common import MessageResponse, Page
 from app.schemas.document import (
     DocumentChunkRead,
     DocumentCreate,
+    DocumentDetail,
     DocumentRead,
+    DocumentUpdate,
     ReindexResponse,
 )
 from app.services import audit as audit_service
@@ -98,12 +100,77 @@ async def upload_document(
     return DocumentRead.model_validate(document)
 
 
-@router.get("/{document_id}", response_model=DocumentRead)
+@router.get("/{document_id}", response_model=DocumentDetail)
 def get_document(
     tenant_id: uuid.UUID, document_id: uuid.UUID, db: DbSession, context: RequireViewer
-) -> DocumentRead:
+) -> DocumentDetail:
     repo = document_service.DocumentRepository(db, context.tenant_id)
-    return DocumentRead.model_validate(repo.get_or_404(document_id))
+    document = repo.get_or_404(document_id)
+    chunks = repo.chunks(document_id)
+    content = "\n\n".join(chunk.content for chunk in chunks)
+    return DocumentDetail(
+        id=document.id,
+        tenant_id=document.tenant_id,
+        title=document.title,
+        source_name=document.source_name,
+        content_type=document.content_type,
+        status=document.status,
+        byte_size=document.byte_size,
+        chunk_count=document.chunk_count,
+        error_message=document.error_message,
+        doc_metadata=document.doc_metadata,
+        created_at=document.created_at,
+        content=content,
+        chunks=[DocumentChunkRead.model_validate(chunk) for chunk in chunks],
+    )
+
+
+@router.patch("/{document_id}", response_model=DocumentDetail)
+def update_document(
+    tenant_id: uuid.UUID,
+    document_id: uuid.UUID,
+    payload: DocumentUpdate,
+    db: DbSession,
+    context: RequireMember,
+) -> DocumentDetail:
+    repo = document_service.DocumentRepository(db, context.tenant_id)
+    document = repo.get_or_404(document_id)
+    updated_doc = document_service.update_document(
+        db,
+        tenant=context.tenant,
+        document=document,
+        title=payload.title,
+        content=payload.content,
+    )
+    chunks = repo.chunks(document_id)
+    content = "\n\n".join(chunk.content for chunk in chunks)
+    audit_service.record(
+        db,
+        action="document.updated",
+        tenant_id=context.tenant_id,
+        actor_id=context.user.id,
+        target_type="document",
+        target_id=document.id,
+        context={
+            "title_updated": payload.title is not None,
+            "content_updated": payload.content is not None,
+        },
+    )
+    return DocumentDetail(
+        id=updated_doc.id,
+        tenant_id=updated_doc.tenant_id,
+        title=updated_doc.title,
+        source_name=updated_doc.source_name,
+        content_type=updated_doc.content_type,
+        status=updated_doc.status,
+        byte_size=updated_doc.byte_size,
+        chunk_count=updated_doc.chunk_count,
+        error_message=updated_doc.error_message,
+        doc_metadata=updated_doc.doc_metadata,
+        created_at=updated_doc.created_at,
+        content=content,
+        chunks=[DocumentChunkRead.model_validate(chunk) for chunk in chunks],
+    )
 
 
 @router.get("/{document_id}/chunks", response_model=list[DocumentChunkRead])

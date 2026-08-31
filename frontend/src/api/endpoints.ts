@@ -5,6 +5,7 @@ import type {
   AskResponse,
   ConversationDetail,
   ConversationSummary,
+  DocumentDetail,
   DocumentRecord,
   Member,
   MemberInviteResult,
@@ -92,6 +93,12 @@ export const documentApi = {
     api.post<{ document_id: string; status: string; chunk_count: number }>(
       `/workspaces/${tenantId}/documents/${documentId}/reindex`,
     ),
+
+  get: (tenantId: string, documentId: string) =>
+    api.get<DocumentDetail>(`/workspaces/${tenantId}/documents/${documentId}`),
+
+  update: (tenantId: string, documentId: string, payload: { title?: string; content?: string }) =>
+    api.patch<DocumentDetail>(`/workspaces/${tenantId}/documents/${documentId}`, payload),
 
   remove: (tenantId: string, documentId: string) =>
     api.delete<{ message: string }>(`/workspaces/${tenantId}/documents/${documentId}`),

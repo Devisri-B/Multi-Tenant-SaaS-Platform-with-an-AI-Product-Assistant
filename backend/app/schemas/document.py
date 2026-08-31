@@ -41,6 +41,16 @@ class DocumentChunkRead(ORMModel):
     token_estimate: int
 
 
+class DocumentDetail(DocumentRead):
+    content: str
+    chunks: list[DocumentChunkRead] = Field(default_factory=list)
+
+
+class DocumentUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1)
+
+
 class ReindexResponse(BaseModel):
     document_id: uuid.UUID
     status: DocumentStatus

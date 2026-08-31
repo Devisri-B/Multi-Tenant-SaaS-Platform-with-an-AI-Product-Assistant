@@ -134,5 +134,49 @@ def reindex_document(db: Session, *, tenant: Tenant, document: Document) -> Docu
     return ingest.index_document(db, document, text)
 
 
+def get_document_content(db: Session, *, tenant: Tenant, document: Document) -> str:
+    """Retrieve full reconstructed text from stored document chunks."""
+    repo = DocumentRepository(db, tenant.id)
+    chunks = repo.chunks(document.id)
+    return "\n\n".join(chunk.content for chunk in chunks)
+
+
+def update_document(
+    db: Session,
+    *,
+    tenant: Tenant,
+    document: Document,
+    title: str | None = None,
+    content: str | None = None,
+) -> Document:
+    """Update title and/or re-chunk & re-embed updated document text."""
+    repo = DocumentRepository(db, tenant.id)
+    if title is not None and title.strip():
+        document.title = title.strip()
+
+    if content is not None:
+        cleaned_content = content.strip()
+        if not cleaned_content:
+            raise ValidationError("Document content cannot be empty.")
+        raw_bytes = cleaned_content.encode("utf-8")
+        if len(raw_bytes) > settings.MAX_UPLOAD_BYTES:
+            raise ValidationError(
+                f"Document exceeds the {settings.MAX_UPLOAD_BYTES // 1024 // 1024}MB limit."
+            )
+        digest = ingest.checksum(raw_bytes)
+        existing_doc = repo.by_checksum(digest)
+        if existing_doc and existing_doc.id != document.id:
+            raise ConflictError("An identical document already exists in this workspace.")
+
+        document.checksum = digest
+        document.byte_size = len(raw_bytes)
+        document.doc_metadata = {**document.doc_metadata, "characters": len(cleaned_content)}
+        ingest.index_document(db, document, cleaned_content)
+    else:
+        db.flush()
+
+    return document
+
+
 def delete_document(db: Session, *, tenant: Tenant, document: Document) -> None:
     DocumentRepository(db, tenant.id).delete(document)
