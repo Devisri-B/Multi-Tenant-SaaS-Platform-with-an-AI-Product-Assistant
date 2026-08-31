@@ -6,7 +6,6 @@ powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/
 
 **Stack** — Python · FastAPI · LangGraph · LangChain · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
 
-> 📖 **Interview & Portfolio Guide**: See [`docs/RESUME_SHOWCASE.md`](docs/RESUME_SHOWCASE.md) for architectural deep-dives, recruiter bullet points, and key technical metrics.
 
 ---
 
