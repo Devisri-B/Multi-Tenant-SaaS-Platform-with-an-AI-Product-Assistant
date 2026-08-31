@@ -1,8 +1,7 @@
-/** App shell: workspace switcher, primary navigation, account menu. */
-
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import { RoleBadge } from '@/components/ui'
 
 const NAV_ITEMS = [
@@ -15,6 +14,7 @@ const NAV_ITEMS = [
 
 export function Layout() {
   const { user, memberships, activeWorkspaceId, activeRole, selectWorkspace, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
   return (
@@ -60,6 +60,16 @@ export function Layout() {
         </nav>
 
         <div className="sidebar__footer">
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Bright Mode' : 'Switch to Dark Mode'}
+          >
+            <span>Theme</span>
+            <span>{theme === 'dark' ? '☀️ Bright' : '🌙 Dark'}</span>
+          </button>
+
           <div className="sidebar__user">
             <strong>{user?.full_name ?? user?.email}</strong>
             <span>{user?.email}</span>

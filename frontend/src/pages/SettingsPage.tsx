@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 
 import { authApi, workspaceApi } from '@/api/endpoints'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import { useAsyncAction } from '@/hooks/useAsync'
 import { Banner, Button, Card } from '@/components/ui'
 import { roleAtLeast } from '@/types/api'
@@ -9,6 +10,7 @@ import { roleAtLeast } from '@/types/api'
 export function SettingsPage() {
   const { activeWorkspaceId, activeMembership, activeRole, refreshSession, selectWorkspace } =
     useAuth()
+  const { theme, setTheme } = useTheme()
   const tenantId = activeWorkspaceId as string
 
   const [name, setName] = useState(activeMembership?.tenant_name ?? '')
@@ -82,6 +84,28 @@ export function SettingsPage() {
             Create
           </Button>
         </form>
+      </Card>
+
+      <Card title="Appearance">
+        <p className="muted">
+          Choose your interface theme. Your preference is saved across sessions.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+          <Button
+            type="button"
+            variant={theme === 'light' ? 'primary' : 'secondary'}
+            onClick={() => setTheme('light')}
+          >
+            ☀️ Bright (Light) Mode
+          </Button>
+          <Button
+            type="button"
+            variant={theme === 'dark' ? 'primary' : 'secondary'}
+            onClick={() => setTheme('dark')}
+          >
+            🌙 Dark Mode
+          </Button>
+        </div>
       </Card>
 
       <Card title="Your password">
