@@ -18,32 +18,41 @@ The assistant uses an adaptive **LangGraph state graph** with **Self-RAG halluci
 - **Self-RAG Hallucination Reductors**: Binary factual consistency evaluators assess candidate generations, triggering strict regeneration loops if unsupported claims are detected.
 - **Dynamic Online Routing**: If workspace documents lack context or fail to resolve the query, the graph routes to online web search (DuckDuckGo / Tavily) to synthesize verified answers with external web citations.
 
-![The product assistant answering a question with two scored citations](docs/screenshots/assistant.png)
+| Grounded Workspace Document Citations | Dynamic Online Search Fallback (Out-of-Scope) |
+| --- | --- |
+| ![The product assistant answering from workspace documents with scored citations](docs/screenshots/assistant.png) | ![The assistant dynamically routing to online search with external citations](docs/screenshots/assistant-web-search.png) |
 
-## Documentation
+---
 
-Uploads are chunked, embedded and indexed on arrival. Status moves through
-`pending → processing → indexed`, and a failed document keeps its error message
-rather than silently disappearing.
+## Document Ingestion, Chunk Inspection & Live Editor
 
-![The documentation page listing two indexed documents with chunk counts and sizes](docs/screenshots/documentation.png)
+Uploads are chunked, embedded and indexed on arrival (`pending → processing → indexed`). Users can inspect individual vector chunks, view full source text, and live-edit documentation with automatic re-indexing.
 
-## Workspace overview
+![The documentation page listing indexed documents with chunk counts and sizes](docs/screenshots/documentation.png)
 
-Usage counters for the selected tenant — members, documents, how many are
-indexed, chunks embedded, and conversations held.
+### Document Viewer & Live Editor Modal
+
+| 1. Full Document Text | 2. Vector Chunk Inspector | 3. Live Editor & Reindexer |
+| --- | --- | --- |
+| ![Full document text view](docs/screenshots/edit-document-text.png) | ![Vector chunk inspection](docs/screenshots/edit-document-chunks.png) | ![Live markdown editor and reindexing](docs/screenshots/edit-document-reindex.png) |
+
+---
+
+## Workspace Overview
+
+Usage counters for the selected tenant — members, documents, how many are indexed, chunks embedded, and conversations held.
 
 ![Workspace overview showing member, document, chunk and conversation counts](docs/screenshots/overview.png)
 
-## Members and settings
+---
 
-Roles are cumulative (`viewer < member < admin < owner`) and the UI only renders
-controls the caller's role permits. Settings is also where additional
-workspaces are created — each one a separate tenant with its own index.
+## Members, RBAC & Settings
 
-| Members | Settings |
+Roles form a cumulative lattice (`viewer < member < admin < owner`). Settings allows tenant creation, workspace renaming, appearance theme selection (Bright / Dark Mode), and credentials management.
+
+| Role-Based Access Control | Workspace Settings & Bright/Dark Mode |
 | --- | --- |
-| ![Member list with role and status columns and an invite form](docs/screenshots/members.png) | ![Settings page with workspace rename, workspace creation and password change](docs/screenshots/settings.png) |
+| ![Member list with role and status columns and an invite form](docs/screenshots/members.png) | ![Settings page with workspace rename, workspace creation and appearance theme switcher](docs/screenshots/settings.png) |
 
 ---
 
@@ -108,7 +117,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 126 tests, SQLite in-memory, no external services
+make test         # 129 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -128,7 +137,7 @@ backend/
     services/     tenant-scoped repositories and domain logic
     rag/          chunking, web search, graph, ingestion, retrieval, answering chain
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          126 tests across auth, tenancy, RBAC, LangGraph Self-RAG and isolation
+  tests/          129 tests across auth, tenancy, RBAC, LangGraph Self-RAG and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh
