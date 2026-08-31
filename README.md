@@ -13,7 +13,8 @@ powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/
 
 ## The AI Assistant: Adaptive LangGraph & Self-RAG
 
-The assistant uses an adaptive **LangGraph state graph** with **Self-RAG hallucination reduction** and **dynamic online search fallback**:
+The assistant uses an adaptive **LangGraph state graph** with **sliding window conversational memory**, **Self-RAG hallucination reduction**, and **dynamic online search fallback**:
+- **Sliding Window Conversation Memory**: Preserves context across multi-turn dialogues with automated conversational query reformulation and pronoun coreference resolution.
 - **Multi-Tenant Vector Search**: Answers grounded in tenant-isolated documentation chunks with similarity scores and excerpts.
 - **Self-RAG Hallucination Reductors**: Binary factual consistency evaluators assess candidate generations, triggering strict regeneration loops if unsupported claims are detected.
 - **Dynamic Online Routing**: If workspace documents lack context or fail to resolve the query, the graph routes to online web search (DuckDuckGo / Tavily) to synthesize verified answers with external web citations.
@@ -117,7 +118,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 129 tests, SQLite in-memory, no external services
+make test         # 135 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -135,9 +136,9 @@ backend/
     schemas/      Pydantic request/response contracts
     api/          dependencies (auth, tenancy, RBAC), middleware, v1 routers
     services/     tenant-scoped repositories and domain logic
-    rag/          chunking, web search, graph, ingestion, retrieval, answering chain
+    rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          129 tests across auth, tenancy, RBAC, LangGraph Self-RAG and isolation
+  tests/          135 tests across auth, tenancy, RBAC, LangGraph Self-RAG, memory and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh

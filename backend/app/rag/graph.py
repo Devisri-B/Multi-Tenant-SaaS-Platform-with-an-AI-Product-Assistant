@@ -1,4 +1,4 @@
-"""LangGraph workflow for adaptive RAG with hallucination reduction and online search routing."""
+"""LangGraph workflow for adaptive RAG with sliding window memory and online search routing."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.rag import prompts
+from app.rag.memory import format_sliding_window_history
 from app.rag.providers import get_chat_provider, get_embedding_provider
 from app.rag.retriever import RetrievedChunk, retrieve
 from app.rag.web_search import WebSearchResult, get_web_search_provider
@@ -26,7 +27,9 @@ class AssistantState(TypedDict, total=False):
     tenant_id: uuid.UUID
     tenant_name: str
     question: str
+    search_query: str
     history: list[tuple[str, str]] | None
+    formatted_history: str
     top_k: int
     allow_web_search: bool
     retry_count: int
@@ -107,10 +110,49 @@ def _to_web_citation(index: int, result: WebSearchResult) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # LangGraph Nodes
 # ---------------------------------------------------------------------------
+def contextualize_query_node(state: AssistantState) -> dict[str, Any]:
+    """Sliding window memory manager: contextualize query and resolve coreferences."""
+    history = state.get("history")
+    question = state["question"]
+    formatted_history = format_sliding_window_history(history)
+
+    if not history or not settings.RAG_ENABLE_QUERY_REWRITE:
+        return {
+            "search_query": question,
+            "formatted_history": formatted_history,
+        }
+
+    try:
+        chat = get_chat_provider()
+        prompt = prompts.REWRITE_QUESTION_PROMPT.format(
+            history=formatted_history,
+            question=question,
+        )
+        rewritten = chat.complete("You are a query reformulation assistant.", prompt).strip()
+        search_query = rewritten if rewritten else question
+        log.info(
+            "langgraph.contextualize_query",
+            original=question,
+            rewritten=search_query,
+            history_turns=len(history),
+        )
+        return {
+            "search_query": search_query,
+            "formatted_history": formatted_history,
+        }
+    except Exception as exc:
+        log.warning("langgraph.contextualize_query.error", error=str(exc))
+        return {
+            "search_query": question,
+            "formatted_history": formatted_history,
+        }
+
+
 def retrieve_node(state: AssistantState) -> dict[str, Any]:
     """Retrieve candidate document chunks from tenant vector store."""
     embeddings = get_embedding_provider()
-    query_vector = embeddings.embed_query(state["question"])
+    search_query = state.get("search_query") or state["question"]
+    query_vector = embeddings.embed_query(search_query)
     db = state["db"]
     top_k = state.get("top_k") or settings.RAG_TOP_K
 
@@ -144,7 +186,8 @@ def grade_documents_node(state: AssistantState) -> dict[str, Any]:
 
     from app.rag.providers import _tokenize
 
-    q_words = {w for w in _tokenize(state["question"]) if len(w) > 3}
+    effective_query = state.get("search_query") or state["question"]
+    q_words = {w for w in _tokenize(effective_query) if len(w) > 3}
     doc_words = set(_tokenize(" ".join(f"{c.document_title} {c.content}" for c in hits)))
     has_keyword_overlap = bool(q_words & doc_words) if q_words else True
 
@@ -156,7 +199,7 @@ def grade_documents_node(state: AssistantState) -> dict[str, Any]:
                 for i, c in enumerate(hits[:3], start=1)
             )
             prompt = prompts.GRADE_DOCUMENTS_PROMPT.format(
-                question=state["question"], context=context_preview
+                question=effective_query, context=context_preview
             )
             grade = chat.complete("You are a relevance grader.", prompt).strip().lower()
             if "no" in grade and "yes" not in grade:
@@ -174,7 +217,7 @@ def grade_documents_node(state: AssistantState) -> dict[str, Any]:
 
 
 def generate_from_docs_node(state: AssistantState) -> dict[str, Any]:
-    """Generate answer grounded in retrieved workspace documents."""
+    """Generate answer grounded in retrieved workspace documents with conversation memory."""
     selected = _trim_context(state["documents"])
     passages = [
         (index, chunk.document_title, chunk.content)
@@ -182,15 +225,18 @@ def generate_from_docs_node(state: AssistantState) -> dict[str, Any]:
     ]
     context_block = prompts.build_context_block(passages)
 
-    question_block = state["question"]
-    history = state.get("history")
-    if history:
-        recent = "\n".join(f"{role}: {content}" for role, content in history[-4:])
-        question_block = f"Earlier in this conversation:\n{recent}\n\nNow: {state['question']}"
+    formatted_history = state.get("formatted_history", "")
+    history_block = (
+        f"<conversation_history>\n{formatted_history}\n</conversation_history>\n\n"
+        if formatted_history
+        else ""
+    )
 
     system_prompt = prompts.SYSTEM_PROMPT.format(workspace_name=state["tenant_name"])
     user_prompt = prompts.USER_PROMPT.format(
-        context=context_block, question=question_block
+        context=context_block,
+        history_block=history_block,
+        question=state["question"],
     )
 
     chat = get_chat_provider()
@@ -220,11 +266,20 @@ def regenerate_strict_node(state: AssistantState) -> dict[str, Any]:
     ]
     context_block = prompts.build_context_block(passages)
 
+    formatted_history = state.get("formatted_history", "")
+    history_block = (
+        f"<conversation_history>\n{formatted_history}\n</conversation_history>\n\n"
+        if formatted_history
+        else ""
+    )
+
     system_prompt = prompts.STRICT_GROUNDING_SYSTEM_PROMPT.format(
         workspace_name=state["tenant_name"]
     )
     user_prompt = prompts.USER_PROMPT.format(
-        context=context_block, question=state["question"]
+        context=context_block,
+        history_block=history_block,
+        question=state["question"],
     )
 
     chat = get_chat_provider()
@@ -291,28 +346,38 @@ def grade_hallucination_node(state: AssistantState) -> dict[str, Any]:
 
 def web_search_node(state: AssistantState) -> dict[str, Any]:
     """Search the web for queries when workspace documentation is insufficient or ungrounded."""
+    search_query = state.get("search_query") or state["question"]
     log.info(
         "langgraph.routing_to_web_search",
         tenant_id=str(state["tenant_id"]),
-        question=state["question"],
+        question=search_query,
     )
     provider = get_web_search_provider()
     results = provider.search(
-        state["question"], max_results=settings.WEB_SEARCH_MAX_RESULTS
+        search_query, max_results=settings.WEB_SEARCH_MAX_RESULTS
     )
     return {"web_results": results}
 
 
 def generate_from_web_node(state: AssistantState) -> dict[str, Any]:
-    """Generate answer synthesized from web search results."""
+    """Generate answer synthesized from web search results with conversation memory."""
     web_results = state.get("web_results", [])
-    web_context = prompts.build_web_context_block(web_results)
+    web_context_block = prompts.build_web_context_block(web_results)
+
+    formatted_history = state.get("formatted_history", "")
+    history_block = (
+        f"<conversation_history>\n{formatted_history}\n</conversation_history>\n\n"
+        if formatted_history
+        else ""
+    )
 
     system_prompt = prompts.WEB_SEARCH_SYSTEM_PROMPT.format(
         workspace_name=state["tenant_name"]
     )
     user_prompt = prompts.WEB_SEARCH_USER_PROMPT.format(
-        web_results=web_context, question=state["question"]
+        web_results=web_context_block,
+        history_block=history_block,
+        question=state["question"],
     )
 
     chat = get_chat_provider()
@@ -386,10 +451,11 @@ def decide_web_route(state: AssistantState) -> str:
 # Graph Compilation
 # ---------------------------------------------------------------------------
 def create_assistant_graph():
-    """Build and compile the Self-RAG LangGraph workflow with hallucination reducers."""
+    """Build and compile the Self-RAG LangGraph workflow with sliding window memory."""
     workflow = StateGraph(AssistantState)
 
     # Add Nodes
+    workflow.add_node("contextualize_query", contextualize_query_node)
     workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("generate_from_docs", generate_from_docs_node)
@@ -400,7 +466,8 @@ def create_assistant_graph():
     workflow.add_node("no_context", no_context_node)
 
     # Graph Flow
-    workflow.set_entry_point("retrieve")
+    workflow.set_entry_point("contextualize_query")
+    workflow.add_edge("contextualize_query", "retrieve")
     workflow.add_edge("retrieve", "grade_documents")
 
     workflow.add_conditional_edges(

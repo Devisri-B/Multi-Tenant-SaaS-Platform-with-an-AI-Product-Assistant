@@ -38,7 +38,7 @@ USER_PROMPT = """\
 {context}
 </context>
 
-<question>
+{history_block}<question>
 {question}
 </question>
 
@@ -63,11 +63,24 @@ WEB_SEARCH_USER_PROMPT = """\
 {web_results}
 </web_search_results>
 
-<question>
+{history_block}<question>
 {question}
 </question>
 
 Answer the question using the online search results above."""
+
+REWRITE_QUESTION_PROMPT = """\
+Given a conversation history and a follow-up question, rephrase the follow-up question \
+to be a standalone search query that contains all necessary context (resolving pronouns \
+like 'it', 'they', 'this', 'that').
+Do NOT answer the question, only return the rephrased standalone query.
+
+<conversation_history>
+{history}
+</conversation_history>
+
+Follow-up Question: {question}
+Standalone Query:"""
 
 GRADE_DOCUMENTS_PROMPT = """\
 You are a grader assessing whether retrieved documentation excerpts are relevant.

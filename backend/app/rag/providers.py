@@ -130,6 +130,31 @@ class FakeChat(ChatProvider):
                 return "no"
             return "yes"
 
+        # 4. Question contextualization / rewrite prompt
+        is_query_rewrite = (
+            "rephrase the follow-up question" in system_prompt
+            or "rephrase the follow-up question" in user_prompt
+            or "Standalone Query:" in user_prompt
+        )
+        if is_query_rewrite:
+            q_match = re.search(
+                r"Follow-up Question:\s*(.*?)(?:\n|Standalone Query:|$)", user_prompt
+            )
+            h_match = re.search(
+                r"<conversation_history>(.*?)</conversation_history>", user_prompt, flags=re.DOTALL
+            )
+            follow_up = q_match.group(1).strip() if q_match else ""
+            if h_match and h_match.group(1).strip():
+                history_text = h_match.group(1).strip()
+                h_words = [w for w in _tokenize(history_text) if len(w) > 3]
+                if any(
+                    p in follow_up.lower()
+                    for p in ("it", "this", "that", "they", "them", "these", "those")
+                ):
+                    topic = h_words[-1] if h_words else ""
+                    return f"{follow_up} regarding {topic}".strip()
+            return follow_up or "general inquiry"
+
         # Check for web search results
         web_match = re.search(
             r"<web_search_results>(.*?)</web_search_results>", user_prompt, flags=re.DOTALL

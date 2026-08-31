@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     ENABLE_HALLUCINATION_CHECK: bool = True
     MAX_REGENERATE_RETRIES: int = 2
 
+    # -- Conversation Memory & Sliding Window ------------------------------
+    RAG_MEMORY_WINDOW_SIZE: int = 6
+    RAG_ENABLE_QUERY_REWRITE: bool = True
+
     # -- Storage ------------------------------------------------------------
     STORAGE_DIR: str = "./storage"
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024

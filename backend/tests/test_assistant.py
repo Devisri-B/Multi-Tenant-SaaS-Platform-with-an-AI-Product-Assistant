@@ -218,3 +218,31 @@ def test_assistant_requires_membership(client, owner, other_owner):
         json={"question": "How long do refunds take?"},
     )
     assert response.status_code == 403
+
+
+def test_multi_turn_conversation_with_sliding_window_memory(client, owner):
+    seed_docs(client, owner, {"Billing": BILLING_DOC})
+    # Turn 1
+    res1 = client.post(
+        f"{assistant_url(owner.tenant_id)}/ask",
+        headers=owner.headers,
+        json={"question": "Tell me about the refund policy"},
+    ).json()
+    conv_id = res1["conversation_id"]
+
+    # Turn 2: Follow-up question relying on memory / query contextualization
+    res2 = client.post(
+        f"{assistant_url(owner.tenant_id)}/ask",
+        headers=owner.headers,
+        json={"question": "How many days does it take?", "conversation_id": conv_id},
+    ).json()
+    assert res2["conversation_id"] == conv_id
+    assert res2["used_context"] is True
+    assert "ten business days" in res2["answer"]
+
+    # Check conversation history has all messages stored in order
+    conv = client.get(
+        f"{assistant_url(owner.tenant_id)}/conversations/{conv_id}",
+        headers=owner.headers,
+    ).json()
+    assert len(conv["messages"]) == 4

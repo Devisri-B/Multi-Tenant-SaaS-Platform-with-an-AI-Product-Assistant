@@ -93,8 +93,13 @@ def append_message(
     return message
 
 
-def history_pairs(conversation: Conversation, limit: int = 6) -> list[tuple[str, str]]:
-    """Recent turns as ``(role, content)`` for prompt conditioning."""
+def history_pairs(
+    conversation: Conversation, limit: int | None = None
+) -> list[tuple[str, str]]:
+    """Recent turns as ``(role, content)`` for prompt conditioning within sliding memory window."""
+    from app.core.config import settings
+
+    window = limit or settings.RAG_MEMORY_WINDOW_SIZE
     return [
-        (str(message.role), message.content) for message in conversation.messages[-limit:]
+        (str(message.role), message.content) for message in conversation.messages[-window:]
     ]
