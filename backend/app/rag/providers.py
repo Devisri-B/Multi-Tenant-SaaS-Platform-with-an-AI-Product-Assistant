@@ -86,13 +86,78 @@ class FakeChat(ChatProvider):
     """
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
-        context_match = re.search(
-            r"<context>(.*?)</context>", user_prompt, flags=re.DOTALL
+        # 1. Document relevance grading prompt
+        is_doc_grading = (
+            "assessing whether retrieved documentation excerpts are relevant" in system_prompt
+            or "assessing whether retrieved documentation excerpts are relevant" in user_prompt
+        )
+        if is_doc_grading:
+            question_match = re.search(r"Question:\s*(.*?)\n", user_prompt)
+            context_match = re.search(r"Context Excerpts:\s*(.*?)$", user_prompt, flags=re.DOTALL)
+            if question_match and context_match:
+                q_words = {token for token in _tokenize(question_match.group(1)) if len(token) > 2}
+                c_words = set(_tokenize(context_match.group(1)))
+                return "yes" if len(q_words & c_words) > 0 else "no"
+            return "yes"
+
+        # 2. Hallucination / groundedness grading prompt
+        is_hallucination_grading = (
+            "assessing whether an answer is grounded in facts" in system_prompt
+            or "assessing whether an answer is grounded in facts" in user_prompt
+        )
+        if is_hallucination_grading:
+            facts_match = re.search(
+                r"Facts:\s*(.*?)\s*Candidate Answer:", user_prompt, flags=re.DOTALL
+            )
+            ans_match = re.search(r"Candidate Answer:\s*(.*?)$", user_prompt, flags=re.DOTALL)
+            if facts_match and ans_match:
+                f_words = set(_tokenize(facts_match.group(1)))
+                a_words = {token for token in _tokenize(ans_match.group(1)) if len(token) > 3}
+                if not a_words:
+                    return "yes"
+                overlap = len(a_words & f_words) / len(a_words)
+                # If more than 30% of significant answer words come from facts, consider grounded
+                return "yes" if overlap >= 0.3 else "no"
+            return "yes"
+
+        # 3. Answer question relevance grading prompt
+        is_answer_grading = (
+            "assessing whether an answer resolves a user question" in system_prompt
+            or "assessing whether an answer resolves a user question" in user_prompt
+        )
+        if is_answer_grading:
+            if "could not find anything" in user_prompt.lower():
+                return "no"
+            return "yes"
+
+        # Check for web search results
+        web_match = re.search(
+            r"<web_search_results>(.*?)</web_search_results>", user_prompt, flags=re.DOTALL
         )
         question_match = re.search(
             r"<question>(.*?)</question>", user_prompt, flags=re.DOTALL
         )
         question = (question_match.group(1) if question_match else user_prompt).strip()
+
+        if web_match and web_match.group(1).strip():
+            web_context = web_match.group(1)
+            keywords = {token for token in _tokenize(question) if len(token) > 3}
+            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", web_context) if s.strip()]
+            scored = sorted(
+                sentences,
+                key=lambda s: len(keywords & set(_tokenize(s))),
+                reverse=True,
+            )
+            best = [s for s in scored[:3] if s]
+            body = " ".join(best) if best else (sentences[0] if sentences else web_context[:200])
+            return (
+                f"This answer was found via online search (not in workspace documentation): {body}"
+            )
+
+        # Standard workspace docs context
+        context_match = re.search(
+            r"<context>(.*?)</context>", user_prompt, flags=re.DOTALL
+        )
 
         if not context_match or not context_match.group(1).strip():
             return (

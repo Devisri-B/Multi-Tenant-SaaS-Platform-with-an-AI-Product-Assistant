@@ -90,12 +90,14 @@ export interface DocumentRecord {
 }
 
 export interface Citation {
-  document_id: string
+  document_id?: string | null
   document_title: string
-  chunk_id: string
+  chunk_id?: string | null
   ordinal: number
   score: number
   excerpt: string
+  url?: string | null
+  source_type?: 'document' | 'web'
 }
 
 export interface AskResponse {
@@ -105,6 +107,7 @@ export interface AskResponse {
   citations: Citation[]
   latency_ms: number
   used_context: boolean
+  source_type?: 'workspace_docs' | 'online_search' | 'none'
 }
 
 export interface ConversationSummary {

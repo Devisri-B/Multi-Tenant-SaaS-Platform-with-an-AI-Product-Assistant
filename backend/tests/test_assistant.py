@@ -34,16 +34,32 @@ def seed_docs(client, actor, docs):
         assert response.status_code == 201
 
 
-def test_ask_without_documents_says_so(client, owner):
+def test_ask_without_documents_and_no_web_says_so(client, owner):
     response = client.post(
         f"{assistant_url(owner.tenant_id)}/ask",
         headers=owner.headers,
-        json={"question": "How do refunds work?"},
+        json={"question": "How do refunds work?", "allow_web_search": False},
     )
     assert response.status_code == 200
     body = response.json()
     assert body["used_context"] is False
     assert body["citations"] == []
+    assert body["source_type"] == "none"
+
+
+def test_ask_without_documents_routes_online(client, owner):
+    response = client.post(
+        f"{assistant_url(owner.tenant_id)}/ask",
+        headers=owner.headers,
+        json={"question": "What is Python asyncio?", "allow_web_search": True},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["used_context"] is True
+    assert body["source_type"] == "online_search"
+    assert len(body["citations"]) > 0
+    assert body["citations"][0]["url"] is not None
+    assert body["citations"][0]["source_type"] == "web"
 
 
 def test_ask_returns_grounded_answer_with_citations(client, owner):
@@ -166,7 +182,7 @@ def test_retrieval_never_crosses_tenants(client, owner, other_owner):
     answer = client.post(
         f"{assistant_url(other_owner.tenant_id)}/ask",
         headers=other_owner.headers,
-        json={"question": "How long do refunds take?"},
+        json={"question": "How long do refunds take?", "allow_web_search": False},
     ).json()
     assert answer["used_context"] is False
     assert "ten business days" not in answer["answer"]

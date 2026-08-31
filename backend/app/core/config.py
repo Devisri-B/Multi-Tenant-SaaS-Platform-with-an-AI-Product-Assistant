@@ -44,7 +44,7 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]
     )
 
-    # -- LLM / RAG ----------------------------------------------------------
+    # -- LLM / RAG / LangGraph ----------------------------------------------
     LLM_PROVIDER: Literal["openai", "fake"] = "openai"
     OPENAI_API_KEY: str | None = None
     OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
@@ -54,6 +54,17 @@ class Settings(BaseSettings):
     RAG_CHUNK_OVERLAP: int = 150
     RAG_TOP_K: int = 5
     RAG_MIN_SCORE: float = 0.15
+    DOCUMENT_RELEVANCE_THRESHOLD: float = 0.25
+
+    # -- Online Web Search --------------------------------------------------
+    WEB_SEARCH_ENABLED: bool = True
+    WEB_SEARCH_PROVIDER: Literal["duckduckgo", "tavily", "fake"] = "duckduckgo"
+    TAVILY_API_KEY: str | None = None
+    WEB_SEARCH_MAX_RESULTS: int = 4
+
+    # -- Hallucination Reduction / Self-RAG ---------------------------------
+    ENABLE_HALLUCINATION_CHECK: bool = True
+    MAX_REGENERATE_RETRIES: int = 2
 
     # -- Storage ------------------------------------------------------------
     STORAGE_DIR: str = "./storage"

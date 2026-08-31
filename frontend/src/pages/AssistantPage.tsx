@@ -68,7 +68,7 @@ export function AssistantPage() {
         <div>
           <h1 className="page__title">Product assistant</h1>
           <p className="page__subtitle">
-            Answers come only from this workspace&apos;s documentation, with citations.
+            Answers come from this workspace&apos;s documentation, falling back to online search when not found.
           </p>
         </div>
         <Button variant="secondary" onClick={startNew}>
@@ -114,11 +114,27 @@ export function AssistantPage() {
                 {message.citations.length > 0 ? (
                   <ol className="citations">
                     {message.citations.map((citation, index) => (
-                      <li key={citation.chunk_id} className="citation">
+                      <li
+                        key={citation.chunk_id || `${citation.document_title}-${index}`}
+                        className="citation"
+                      >
                         <span className="citation__marker">[{index + 1}]</span>
-                        <span className="citation__title">{citation.document_title}</span>
+                        {citation.source_type === 'web' || citation.url ? (
+                          <a
+                            href={citation.url ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="citation__title citation__link"
+                          >
+                            {citation.document_title} ↗
+                          </a>
+                        ) : (
+                          <span className="citation__title">{citation.document_title}</span>
+                        )}
                         <span className="citation__score">
-                          {(citation.score * 100).toFixed(0)}% match
+                          {citation.source_type === 'web'
+                            ? 'Online Search'
+                            : `${(citation.score * 100).toFixed(0)}% match`}
                         </span>
                         <p className="citation__excerpt">{citation.excerpt}</p>
                       </li>
@@ -128,7 +144,7 @@ export function AssistantPage() {
               </article>
             ))}
 
-            {ask.pending ? <Spinner label="Searching your documentation…" /> : null}
+            {ask.pending ? <Spinner label="Finding answers from docs & online search…" /> : null}
             <div ref={transcriptEnd} />
           </div>
 
@@ -147,12 +163,12 @@ export function AssistantPage() {
         </section>
       </div>
 
-      <Card title="How grounding works">
+      <Card title="How grounding & online routing work">
         <p className="muted">
           Your question is embedded and matched against chunks of this workspace&apos;s documents.
-          Retrieval is filtered by workspace in SQL, so the assistant can never quote another
-          tenant&apos;s docs. If nothing scores above the relevance threshold, it says so instead of
-          guessing.
+          Retrieval is filtered by workspace in SQL, guaranteeing multi-tenant isolation.
+          If nothing scores above the relevance threshold, LangGraph dynamically routes your question
+          to online web search to synthesize a helpful, citation-backed answer.
         </p>
       </Card>
     </div>

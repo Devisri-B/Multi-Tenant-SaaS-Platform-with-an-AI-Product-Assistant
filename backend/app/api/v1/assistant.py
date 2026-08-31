@@ -50,6 +50,7 @@ def ask(
         question=payload.question,
         top_k=payload.top_k,
         history=history,
+        allow_web_search=payload.allow_web_search,
     )
 
     message = conversation_service.append_message(
@@ -68,7 +69,11 @@ def ask(
         actor_id=context.user.id,
         target_type="conversation",
         target_id=conversation.id,
-        context={"used_context": result.used_context, "latency_ms": result.latency_ms},
+        context={
+            "used_context": result.used_context,
+            "source_type": result.source_type,
+            "latency_ms": result.latency_ms,
+        },
     )
 
     return AskResponse(
@@ -78,6 +83,7 @@ def ask(
         citations=[Citation(**citation) for citation in _strip_index(result.citations)],
         latency_ms=result.latency_ms,
         used_context=result.used_context,
+        source_type=result.source_type,
     )
 
 

@@ -1,21 +1,21 @@
-# Nimbus — Multi-Tenant SaaS Platform with an AI Product Assistant
+# Nimbus — Multi-Tenant SaaS Platform with an Adaptive AI Assistant
 
-A production-shaped SaaS foundation: many isolated customer workspaces served
-from a single codebase and a single Postgres schema, plus a retrieval-augmented
-assistant that answers questions from each workspace's own product
-documentation.
+A production-grade SaaS platform featuring isolated customer workspaces served
+from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
+powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
 
-**Stack** — Python · FastAPI · PostgreSQL (pgvector) · SQLAlchemy · Alembic ·
-React · TypeScript · Vite · LangChain · Docker · GitHub Actions
+**Stack** — Python · FastAPI · LangGraph · LangChain · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
+
+> 📖 **Interview & Portfolio Guide**: See [`docs/RESUME_SHOWCASE.md`](docs/RESUME_SHOWCASE.md) for architectural deep-dives, recruiter bullet points, and key technical metrics.
 
 ---
 
-## The assistant
+## The AI Assistant: Adaptive LangGraph & Self-RAG
 
-Every answer is built only from chunks retrieved out of that workspace's own
-documents, and each one carries its source and a similarity score. Here the
-answer to a question about rate limits cites the API reference at 35% and the
-roles FAQ at 16% — you can see exactly which passage produced which claim.
+The assistant uses an adaptive **LangGraph state graph** with **Self-RAG hallucination reduction** and **dynamic online search fallback**:
+- **Multi-Tenant Vector Search**: Answers grounded in tenant-isolated documentation chunks with similarity scores and excerpts.
+- **Self-RAG Hallucination Reductors**: Binary factual consistency evaluators assess candidate generations, triggering strict regeneration loops if unsupported claims are detected.
+- **Dynamic Online Routing**: If workspace documents lack context or fail to resolve the query, the graph routes to online web search (DuckDuckGo / Tavily) to synthesize verified answers with external web citations.
 
 ![The product assistant answering a question with two scored citations](docs/screenshots/assistant.png)
 
@@ -107,7 +107,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 98 tests, SQLite in-memory, no external services
+make test         # 126 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -125,9 +125,9 @@ backend/
     schemas/      Pydantic request/response contracts
     api/          dependencies (auth, tenancy, RBAC), middleware, v1 routers
     services/     tenant-scoped repositories and domain logic
-    rag/          chunking, providers, ingestion, retrieval, answering chain
+    rag/          chunking, web search, graph, ingestion, retrieval, answering chain
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          98 tests across auth, tenancy, RBAC, RAG and isolation
+  tests/          126 tests across auth, tenancy, RBAC, LangGraph Self-RAG and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh
