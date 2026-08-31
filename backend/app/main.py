@@ -113,8 +113,8 @@ def create_app() -> FastAPI:
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-        @app.get("/{full_path:path}", include_in_schema=False)
-        async def serve_spa(full_path: str) -> FileResponse | JSONResponse:
+        @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+        async def serve_spa(full_path: str):
             if (
                 full_path.startswith("api/")
                 or full_path.startswith("docs")
