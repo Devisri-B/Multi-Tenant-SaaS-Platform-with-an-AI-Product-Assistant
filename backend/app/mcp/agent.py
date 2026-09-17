@@ -61,16 +61,13 @@ async def execute_mcp_query(
                 print(f"   • {t.name}: {t.description.strip().splitlines()[0]}")
 
             anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-            openai_api_key = os.getenv("OPENAI_API_KEY")
 
             # 3. Autonomous Reasoning Loop
             if use_llm and anthropic_api_key:
                 await _run_anthropic_agent_loop(session, available_tools, question, tenant_id, anthropic_api_key)
-            elif use_llm and openai_api_key:
-                await _run_openai_agent_loop(session, available_tools, question, tenant_id)
             else:
-                if use_llm and not anthropic_api_key and not openai_api_key:
-                    print("\n⚠️  Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY detected. Running in deterministic Agent Demonstration Mode.")
+                if use_llm and not anthropic_api_key:
+                    print("\n⚠️  No ANTHROPIC_API_KEY detected. Running in deterministic Agent Demonstration Mode.")
                 await _run_deterministic_agent_loop(session, question, tenant_id)
 
 
@@ -234,93 +231,6 @@ async def _run_anthropic_agent_loop(
         await _run_deterministic_agent_loop(session, question, tenant_id)
 
 
-async def _run_openai_agent_loop(
-    session: ClientSession,
-    available_tools: list[Any],
-    question: str,
-    tenant_id: str | None,
-) -> None:
-    """Full ReAct loop powered by OpenAI tool calling over MCP."""
-    try:
-        from openai import OpenAI
-
-        client = OpenAI()
-
-        # Convert MCP tools to OpenAI function calling format
-        openai_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.inputSchema,
-                },
-            }
-            for t in available_tools
-        ]
-
-        system_prompt = (
-            "You are an executive research agent. You have access to a Self-RAG Knowledge Base "
-            "via Model Context Protocol (MCP) tools. Always query the MCP tools to verify facts "
-            "before answering. Cite sources appropriately."
-        )
-        if tenant_id:
-            system_prompt += f" The current tenant UUID is {tenant_id}."
-
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
-        ]
-
-        print("\n" + "-" * 70)
-        print("🧠 AGENT REASONING: Planning tool invocation with LLM...")
-        print("-" * 70)
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            tools=openai_tools,
-            tool_choice="auto",
-        )
-
-        msg = response.choices[0].message
-        if msg.tool_calls:
-            messages.append(msg)
-            for tool_call in msg.tool_calls:
-                fn_name = tool_call.function.name
-                fn_args = json.loads(tool_call.function.arguments)
-                print(f" Agent invoking MCP tool: '{fn_name}' with args: {fn_args}")
-
-                mcp_res = await session.call_tool(fn_name, fn_args)
-                tool_output = mcp_res.content[0].text
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": tool_output,
-                    }
-                )
-
-            # Synthesize final answer from tool outputs
-            final_res = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-            )
-            final_answer = final_res.choices[0].message.content
-            print("\n" + "=" * 70)
-            print("🎯 FINAL AGENT SYNTHESIS")
-            print("=" * 70)
-            print(final_answer)
-        else:
-            print("\n" + "=" * 70)
-            print("🎯 AGENT RESPONSE (Direct)")
-            print("=" * 70)
-            print(msg.content)
-
-    except Exception as exc:
-        print(f"⚠️  LLM execution error: {exc}. Falling back to deterministic mode.")
-        await _run_deterministic_agent_loop(session, question, tenant_id)
 
 
 def main():

@@ -45,13 +45,13 @@ class Settings(BaseSettings):
     )
 
     # -- LLM / RAG / LangGraph ----------------------------------------------
-    LLM_PROVIDER: Literal["anthropic", "openai", "fake"] = "anthropic"
+    LLM_PROVIDER: Literal["anthropic", "fake"] = "anthropic"
     ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_CHAT_MODEL: str = "claude-3-5-haiku-20241022"
-    OPENAI_API_KEY: str | None = None
-    OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    EMBEDDING_DIMENSIONS: int = 1536
+    EMBEDDING_PROVIDER: Literal["sentence_transformers", "fake"] = "sentence_transformers"
+    SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_DEVICE: str = "cpu"
+    EMBEDDING_DIMENSIONS: int = 384
     RAG_CHUNK_SIZE: int = 900
     RAG_CHUNK_OVERLAP: int = 150
     RAG_TOP_K: int = 5

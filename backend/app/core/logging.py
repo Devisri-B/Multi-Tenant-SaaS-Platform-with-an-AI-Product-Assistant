@@ -41,7 +41,7 @@ def configure_logging() -> None:
     )
 
     # Quiet down the noisier third-party loggers.
-    for noisy in ("uvicorn.access", "httpx", "openai"):
+    for noisy in ("uvicorn.access", "httpx", "anthropic", "sentence_transformers"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

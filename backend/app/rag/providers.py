@@ -1,9 +1,9 @@
 """LLM and embedding providers.
 
-Production uses OpenAI through LangChain.  Tests and offline development use
-``FakeProvider``, a deterministic hash-based embedder plus an extractive
-"generator" — the pipeline exercises exactly the same code paths without a
-network call or an API key.
+Production uses Anthropic Claude (via SyncAnthropic) for chat generation and
+local SentenceTransformers (all-MiniLM-L6-v2) for zero-API-cost vector embeddings.
+Tests and offline development use FakeEmbeddings and FakeChat — the pipeline
+exercises exactly the same code paths without a network call or an API key.
 """
 
 from __future__ import annotations
@@ -206,61 +206,51 @@ class FakeChat(ChatProvider):
 
 
 # ---------------------------------------------------------------------------
-# OpenAI provider
+# SentenceTransformers Local Embedding Provider
 # ---------------------------------------------------------------------------
-class OpenAIEmbeddings(EmbeddingProvider):
-    def __init__(self) -> None:
-        if not settings.OPENAI_API_KEY:
-            raise ProviderError("OPENAI_API_KEY is not configured.")
-        from langchain_openai import OpenAIEmbeddings as LCEmbeddings
+class SentenceTransformerEmbeddings(EmbeddingProvider):
+    """Local embedding provider using sentence-transformers (e.g. all-MiniLM-L6-v2)."""
 
+    def __init__(
+        self,
+        model_name: str | None = None,
+        device: str | None = None,
+    ) -> None:
+        self.model_name = model_name or settings.SENTENCE_TRANSFORMER_MODEL
+        self.device_str = device or settings.EMBEDDING_DEVICE
+        self._model: Any = None
         self.dimensions = settings.EMBEDDING_DIMENSIONS
-        self._client = LCEmbeddings(
-            model=settings.OPENAI_EMBEDDING_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            dimensions=settings.EMBEDDING_DIMENSIONS,
-        )
+
+    def _ensure_loaded(self) -> None:
+        if self._model is not None:
+            return
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            self._model = SentenceTransformer(self.model_name, device=self.device_str)
+            self.dimensions = self._model.get_sentence_embedding_dimension()
+        except Exception as exc:
+            raise ProviderError(
+                f"Failed to load SentenceTransformer model '{self.model_name}': {exc}"
+            ) from exc
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        self._ensure_loaded()
         try:
-            return self._client.embed_documents(texts)
+            embeddings = self._model.encode(texts, normalize_embeddings=True)
+            return [vec.tolist() for vec in embeddings]
         except Exception as exc:  # pragma: no cover - network path
-            raise ProviderError(f"Embedding request failed: {exc}") from exc
+            raise ProviderError(f"SentenceTransformer embed_documents failed: {exc}") from exc
 
     def embed_query(self, text: str) -> list[float]:
+        self._ensure_loaded()
         try:
-            return self._client.embed_query(text)
+            embedding = self._model.encode(text, normalize_embeddings=True)
+            return embedding.tolist()
         except Exception as exc:  # pragma: no cover - network path
-            raise ProviderError(f"Embedding request failed: {exc}") from exc
-
-
-class OpenAIChat(ChatProvider):
-    def __init__(self) -> None:
-        if not settings.OPENAI_API_KEY:
-            raise ProviderError("OPENAI_API_KEY is not configured.")
-        from langchain_core.output_parsers import StrOutputParser
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_openai import ChatOpenAI
-
-        self._prompt = ChatPromptTemplate.from_messages(
-            [("system", "{system_prompt}"), ("human", "{user_prompt}")]
-        )
-        self._model = ChatOpenAI(
-            model=settings.OPENAI_CHAT_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.1,
-            timeout=45,
-            max_retries=2,
-        )
-        self._chain = self._prompt | self._model | StrOutputParser()
-
-    def complete(self, system_prompt: str, user_prompt: str) -> str:
-        try:
-            return self._chain.invoke(
-                {"system_prompt": system_prompt, "user_prompt": user_prompt}
-            ).strip()
-        except Exception as exc:  # pragma: no cover - network path
-            raise ProviderError(f"Chat completion failed: {exc}") from exc
+            raise ProviderError(f"SentenceTransformer embed_query failed: {exc}") from exc
 
 
 class AnthropicChat(ChatProvider):
@@ -298,11 +288,10 @@ class AnthropicChat(ChatProvider):
 # ---------------------------------------------------------------------------
 @lru_cache
 def get_embedding_provider() -> EmbeddingProvider:
-    # Anthropic does not provide embeddings; use OpenAI embeddings if key is present
-    if settings.LLM_PROVIDER in ("anthropic", "openai") and settings.OPENAI_API_KEY:
-        return OpenAIEmbeddings()
-    if settings.LLM_PROVIDER == "openai":
-        return OpenAIEmbeddings()
+    if settings.LLM_PROVIDER == "fake" or settings.EMBEDDING_PROVIDER == "fake":
+        return FakeEmbeddings()
+    if settings.EMBEDDING_PROVIDER == "sentence_transformers":
+        return SentenceTransformerEmbeddings()
     return FakeEmbeddings()
 
 
@@ -310,8 +299,6 @@ def get_embedding_provider() -> EmbeddingProvider:
 def get_chat_provider() -> ChatProvider:
     if settings.LLM_PROVIDER == "anthropic":
         return AnthropicChat()
-    if settings.LLM_PROVIDER == "openai":
-        return OpenAIChat()
     return FakeChat()
 
 

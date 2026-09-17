@@ -73,8 +73,8 @@ python -m app.mcp.agent --offline
 # Custom query:
 python -m app.mcp.agent --question "What is the refund policy?" --offline
 
-# Full LLM Mode (using OpenAI function calling via MCP):
-export OPENAI_API_KEY="sk-..."
+# Full LLM Mode (using SyncAnthropic Claude tool calling via MCP):
+export ANTHROPIC_API_KEY="sk-ant-..."
 python -m app.mcp.agent --question "Explain the document upload limits."
 ```
 

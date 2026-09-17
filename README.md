@@ -4,7 +4,7 @@ A production-grade SaaS platform featuring isolated customer workspaces served
 from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
 powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
 
-**Stack** — Python · FastAPI · LangGraph · Anthropic Claude (SyncAnthropic) · FastMCP · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
+**Stack** — Python · FastAPI · LangGraph · Anthropic Claude (SyncAnthropic) · FastMCP · SentenceTransformers · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
 
 > 🚀 **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
 > 🔑 **Seeded Demo Account**: Email: `owner@nimbus.dev` · Password: `DemoPassw0rd`
@@ -156,8 +156,8 @@ python -m app.mcp.agent --offline
 # 2. Ask a specific query in offline mode:
 python -m app.mcp.agent --question "What is the refund policy?" --offline
 
-# 3. Live LLM mode with OpenAI tool calling over MCP:
-export OPENAI_API_KEY="sk-..."
+# 3. Live LLM mode with SyncAnthropic Claude tool calling over MCP:
+export ANTHROPIC_API_KEY="sk-ant-..."
 python -m app.mcp.agent --question "Explain the document upload limits."
 ```
 
@@ -232,12 +232,13 @@ client that has not already been checked against the caller's memberships.
 Requesting a workspace you are not a member of returns `403`, not `404`, and a
 non-existent workspace returns `404` — the split is deliberate and tested.
 
-**Provider seam for the LLM.** `app/rag/providers.py` defines
-`EmbeddingProvider` and `ChatProvider`. Production binds them to OpenAI through
-LangChain; `LLM_PROVIDER=fake` binds them to a deterministic hashed
+**Provider seam for LLM & Embeddings.** `app/rag/providers.py` defines
+`EmbeddingProvider` and `ChatProvider`. Production binds Chat to Anthropic Claude
+(via `SyncAnthropic`) and Embeddings to local `SentenceTransformers`
+(`all-MiniLM-L6-v2`); `LLM_PROVIDER=fake` binds them to a deterministic hashed
 bag-of-words embedder and an extractive generator. The whole pipeline —
 chunking, embedding, retrieval, prompt assembly, citation building — runs
-identically in CI with no API key and no network.
+identically in CI with zero external API keys and zero cost.
 
 **Portable column types.** `Vector` is a real `pgvector` column on Postgres and
 a JSON array on SQLite, and the retriever pushes the nearest-neighbour search
@@ -252,7 +253,7 @@ the database.
 ### Docker (everything)
 
 ```bash
-cp .env.example .env          # set OPENAI_API_KEY, or leave LLM_PROVIDER=fake
+cp .env.example .env          # set ANTHROPIC_API_KEY, or leave LLM_PROVIDER=fake
 docker compose up --build
 ```
 
@@ -277,7 +278,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 155 tests, SQLite in-memory, no external services
+make test         # 160 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -295,10 +296,10 @@ backend/
     schemas/      Pydantic request/response contracts
     api/          dependencies (auth, tenancy, RBAC), middleware, v1 routers
     services/     tenant-scoped repositories and domain logic
-    rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain, DeBERTa NLI
+    rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain, DeBERTa NLI, SentenceTransformers
     mcp/          FastMCP server (stdio), autonomous tool-calling client agent
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          155 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, DeBERTa NLI, Claude, memory and isolation
+  tests/          160 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, DeBERTa NLI, Claude, SentenceTransformers, memory and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh
@@ -349,11 +350,12 @@ See `.env.example` for the full list. The ones that matter most:
 | --- | --- | --- |
 | `SECRET_KEY` | dev placeholder | **Must** be replaced in production |
 | `DATABASE_URL` | assembled from `POSTGRES_*` | Overrides the parts |
-| `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic), `openai`, or `fake` |
+| `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic) or `fake` |
 | `ANTHROPIC_API_KEY` | — | Required when `LLM_PROVIDER=anthropic` |
 | `ANTHROPIC_CHAT_MODEL` | `claude-3-5-haiku-20241022` | Anthropic Claude model checkpoint |
-| `OPENAI_API_KEY` | — | Required when using OpenAI embeddings |
-| `EMBEDDING_DIMENSIONS` | `1536` | Must match the migration's vector width |
+| `EMBEDDING_PROVIDER` | `sentence_transformers` | `sentence_transformers` (zero API cost) or `fake` |
+| `SENTENCE_TRANSFORMER_MODEL` | `all-MiniLM-L6-v2` | Local Hugging Face sentence embedding model |
+| `EMBEDDING_DIMENSIONS` | `384` | Embedding vector width |
 | `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (zero-API-cost local NLI), `llm`, or `fake` |
 | `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |
 | `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |

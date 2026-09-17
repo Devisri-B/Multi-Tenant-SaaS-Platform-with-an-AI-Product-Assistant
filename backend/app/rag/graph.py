@@ -193,7 +193,7 @@ def grade_documents_node(state: AssistantState) -> dict[str, Any]:
     doc_words = set(_tokenize(" ".join(f"{c.document_title} {c.content}" for c in hits)))
     has_keyword_overlap = bool(q_words & doc_words) if q_words else True
 
-    if settings.LLM_PROVIDER in ("anthropic", "openai"):
+    if settings.LLM_PROVIDER == "anthropic":
         try:
             chat = get_chat_provider()
             context_preview = "\n\n".join(
