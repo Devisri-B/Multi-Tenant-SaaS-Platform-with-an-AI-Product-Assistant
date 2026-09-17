@@ -4,7 +4,7 @@ A production-grade SaaS platform featuring isolated customer workspaces served
 from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
 powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
 
-**Stack** — Python · FastAPI · LangGraph · LangChain · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
+**Stack** — Python · FastAPI · LangGraph · LangChain · FastMCP (Model Context Protocol) · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
 
 > 🚀 **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
 > 🔑 **Seeded Demo Account**: Email: `owner@nimbus.dev` · Password: `DemoPassw0rd`
@@ -22,6 +22,96 @@ The assistant uses an adaptive **LangGraph state graph** with **sliding window c
 | Grounded Workspace Document Citations | Dynamic Online Search Fallback (Out-of-Scope) |
 | --- | --- |
 | ![The product assistant answering from workspace documents with scored citations](docs/screenshots/assistant.png) | ![The assistant dynamically routing to online search with external citations](docs/screenshots/assistant-web-search.png) |
+
+---
+
+## Model Context Protocol (MCP) Server & Autonomous Agent
+
+Nimbus exposes its multi-tenant Self-RAG knowledge base to external AI tooling and desktop assistants via a standard **FastMCP Server** (`app.mcp.server`) and includes an **Autonomous Tool-Calling Agent** (`app.mcp.agent`) acting as an MCP client over standard I/O (`stdio`).
+
+### MCP Architecture
+
+```mermaid
+flowchart LR
+    subgraph Host ["Host / Client Layer"]
+        Agent["Autonomous Agent<br/>(app/mcp/agent.py)"]
+        Claude["Claude Desktop / Cursor"]
+    end
+
+    subgraph MCP ["Model Context Protocol (JSON-RPC)"]
+        Stdio["Standard I/O (stdio) Transport"]
+        Discovery["Dynamic Tool Discovery<br/>(list_tools)"]
+    end
+
+    subgraph Server ["FastMCP Server (app/mcp/server.py)"]
+        T1["list_workspaces"]
+        T2["semantic_search_chunks"]
+        T3["self_rag_query"]
+    end
+
+    subgraph Pipeline ["Self-RAG Pipeline (app/rag/)"]
+        Graph["LangGraph Workflow"]
+        PGVector["pgvector Store"]
+        Graders["Hallucination & Relevance Graders"]
+        Web["DuckDuckGo Fallback"]
+    end
+
+    Agent <--> Stdio
+    Claude <--> Stdio
+    Stdio <--> Server
+    Server --> T1 & T2 & T3
+    T2 --> PGVector
+    T3 --> Graph
+    Graph --> PGVector & Graders & Web
+```
+
+### Exposed MCP Tools
+
+The FastMCP server exposes three standardized tools via standard JSON-RPC:
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `list_workspaces` | *(none)* | Discovers all active tenant workspaces (UUIDs, names, slugs, subscription tiers) so external agents can dynamically target tenants without hardcoded IDs. |
+| `semantic_search_chunks` | `query: str`, `tenant_id?: str`, `top_k?: int` | Performs direct semantic vector retrieval against PostgreSQL `pgvector` without LLM answer generation. Returns chunk excerpts, document titles, and cosine similarity scores. |
+| `self_rag_query` | `question: str`, `tenant_id?: str`, `allow_web_search?: bool`, `top_k?: int` | Executes the complete LangGraph Self-RAG workflow: query reformulation, document grading, anti-hallucination verification, iterative self-correction, and web search fallback. |
+
+### Running the Autonomous Agent (MCP Client)
+
+The autonomous agent automatically launches the MCP server as a subprocess over `stdio`, dynamically inspects available tools, and runs an autonomous reasoning and tool-calling loop:
+
+```bash
+# 1. Offline demonstration mode (no API key required, verifies MCP handshake & tool execution):
+cd backend
+python -m app.mcp.agent --offline
+
+# 2. Ask a specific query in offline mode:
+python -m app.mcp.agent --question "What is the refund policy?" --offline
+
+# 3. Live LLM mode with OpenAI tool calling over MCP:
+export OPENAI_API_KEY="sk-..."
+python -m app.mcp.agent --question "Explain the document upload limits."
+```
+
+### IDE Integration (Claude Desktop & Cursor)
+
+Connect Claude Desktop or Cursor directly to your private tenant knowledge base by adding the server configuration to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "nimbus-self-rag": {
+      "command": "python",
+      "args": ["-m", "app.mcp.server"],
+      "cwd": "/path/to/SAAS/backend",
+      "env": {
+        "DATABASE_URL": "postgresql+psycopg://postgres:postgres@localhost:5432/saas_db"
+      }
+    }
+  }
+}
+```
+
+Detailed documentation and examples are in [`backend/app/mcp/README.md`](backend/app/mcp/README.md).
 
 ---
 
@@ -118,7 +208,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 135 tests, SQLite in-memory, no external services
+make test         # 143 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -137,8 +227,9 @@ backend/
     api/          dependencies (auth, tenancy, RBAC), middleware, v1 routers
     services/     tenant-scoped repositories and domain logic
     rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain
+    mcp/          FastMCP server (stdio), autonomous tool-calling client agent
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          135 tests across auth, tenancy, RBAC, LangGraph Self-RAG, memory and isolation
+  tests/          143 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, memory and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh
