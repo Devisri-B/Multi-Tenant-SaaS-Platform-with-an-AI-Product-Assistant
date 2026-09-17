@@ -40,18 +40,18 @@ flowchart TB
     subgraph RAGWorkflow ["4. Adaptive Self-RAG Engine (LangGraph)"]
         direction TB
         Memory["Sliding Window Memory<br/>(Coreference Reformulator)"]
-        Retriever["pgvector Retrieval<br/>(Cosine Similarity >= RAG_MIN_SCORE)"]
+        Retriever["pgvector Retrieval<br/>(Cosine Similarity Threshold 0.40)"]
         DocGrader{"Document Grader<br/>(Relevance Filter)"}
-        Generator["Contextual Generator<br/>(Grounded Workspace Answering)"]
-        HallucinationGrader{"Hallucination Reductor<br/>(Factual Consistency Check)"}
+        Generator["Contextual Generator<br/>(Anthropic Claude 3.5 Haiku)"]
+        HallucinationGrader{"Hallucination Reductor<br/>(DeBERTa-v3 NLI Entailment)"}
         WebSearch["Dynamic Web Fallback<br/>(DuckDuckGo / Tavily Citations)"]
         FinalAnswer["Verified Response + Citations"]
     end
 
     %% Client Connections
-    SPA -->|HTTP / REST + JWT| MW
-    IDE <-->|stdio Transport| FastMCP
-    AgentCLI <-->|stdio Transport| FastMCP
+    SPA -->|"HTTP / REST + JWT"| MW
+    IDE <-->|"stdio Transport"| FastMCP
+    AgentCLI <-->|"stdio Transport"| FastMCP
 
     %% Gateway Pipeline
     MW --> AuthTenancy
@@ -70,11 +70,11 @@ flowchart TB
     RAGWorkflow --> PGVectorDB
     Memory --> Retriever
     Retriever --> DocGrader
-    DocGrader -->|Relevant Chunks| Generator
-    DocGrader -->|No Context / Out-of-Scope| WebSearch
+    DocGrader -->|"Relevant Chunks"| Generator
+    DocGrader -->|"Out of Scope"| WebSearch
     Generator --> HallucinationGrader
-    HallucinationGrader -->|Grounded| FinalAnswer
-    HallucinationGrader -->|Hallucination Detected (Retry)| Generator
+    HallucinationGrader -->|"Grounded"| FinalAnswer
+    HallucinationGrader -->|"Unverified (Retry)"| Generator
     WebSearch --> FinalAnswer
 ```
 
