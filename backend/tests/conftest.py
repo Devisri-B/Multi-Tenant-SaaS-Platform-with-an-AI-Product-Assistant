@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
+
+# Ensure backend root is always first on sys.path regardless of execution context
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")

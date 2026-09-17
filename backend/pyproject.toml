@@ -17,6 +17,7 @@ ignore = ["B008", "B904"]
 known-first-party = ["app"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 filterwarnings = ["ignore::DeprecationWarning"]
