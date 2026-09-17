@@ -37,14 +37,20 @@ from app.services import tenant as tenant_service  # noqa: E402
 
 @pytest.fixture(scope="session", autouse=True)
 def _create_schema() -> Iterator[None]:
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+    if engine.url.drivername.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+        yield
+        Base.metadata.drop_all(bind=engine)
+    else:
+        yield
 
 
 @pytest.fixture(autouse=True)
-def _clean_tables() -> Iterator[None]:
+def _clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     yield
+    is_integration = "test_postgres_integration" in request.node.nodeid
+    if is_integration or not engine.url.drivername.startswith("sqlite"):
+        return
     try:
         with engine.begin() as connection:
             for table in reversed(Base.metadata.sorted_tables):

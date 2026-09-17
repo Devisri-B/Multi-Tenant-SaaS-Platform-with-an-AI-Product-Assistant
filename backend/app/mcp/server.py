@@ -12,8 +12,6 @@ A tenant outside the allowlist is treated exactly like one that does not exist,
 so the server neither lists nor confirms the existence of other workspaces.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sys
@@ -66,7 +64,7 @@ def _allowed_tenants_query(db: Session):
     return query
 
 
-def _resolve_tenant(db: Session, tenant_id_str: str | None) -> Tenant | None:
+def _resolve_tenant(db: Session, tenant_id_str: str | None = None) -> Tenant | None:
     """Resolve a tenant by UUID string or fallback to the first allowed tenant."""
     if tenant_id_str:
         try:
