@@ -74,14 +74,14 @@ python -m app.mcp.agent --offline
 # Custom query in offline mode:
 python -m app.mcp.agent --question "What is the refund policy?" --offline
 
-# Full LLM Mode (using Anthropic Claude tool use via MCP):
+# Full LLM mode: Claude tool-calling loop (AsyncAnthropic) over MCP, loops until a final answer:
 export ANTHROPIC_API_KEY="sk-ant-..."
 python -m app.mcp.agent --question "Explain the document upload limits."
 ```
 
 ### 3. Run Automated Tests
 ```bash
-PYTHONPATH=. pytest tests/test_mcp.py -v
+PYTHONPATH=. pytest tests/test_mcp.py tests/test_mcp_agent.py -v
 ```
 
 ---
@@ -104,7 +104,8 @@ Add this to your `claude_desktop_config.json` (located at `~/Library/Application
       ],
       "cwd": "/path/to/SAAS/backend",
       "env": {
-        "DATABASE_URL": "postgresql+psycopg://postgres:postgres@localhost:5432/saas_db"
+        "DATABASE_URL": "postgresql+psycopg://postgres:postgres@localhost:5432/saas_db",
+        "MCP_ALLOWED_TENANT_IDS": "<workspace-uuid>,<workspace-uuid>"
       }
     }
   }
@@ -112,3 +113,16 @@ Add this to your `claude_desktop_config.json` (located at `~/Library/Application
 ```
 
 When you restart Claude Desktop or Cursor, `list_workspaces`, `semantic_search_chunks`, and `self_rag_query` will be available as active tools.
+
+---
+
+## Tenant Isolation
+
+The REST API scopes every query by the caller's JWT and membership. The MCP server has no caller identity (stdio has no auth layer), so isolation is enforced by configuration instead:
+
+| Setting | Behaviour |
+| :--- | :--- |
+| `MCP_ALLOWED_TENANT_IDS` unset | Every active workspace is exposed. Acceptable only for a local stdio server; the server logs a warning at startup. |
+| `MCP_ALLOWED_TENANT_IDS=<uuid>,<uuid>` | `list_workspaces` returns only those workspaces; the no-`tenant_id` fallback picks the first allowed one; an explicit `tenant_id` outside the list returns `TenantNotFound` **before** any retrieval or LLM call, and the response does not reveal whether that tenant exists. |
+
+All three tools resolve their workspace through the same `_allowed_tenants_query` helper (`server.py`), so a new tool cannot accidentally bypass the allowlist. Underneath that, `TenantScopedRepository` and the pgvector query still apply `WHERE tenant_id = :id`, so the allowlist is an outer gate rather than the only one.

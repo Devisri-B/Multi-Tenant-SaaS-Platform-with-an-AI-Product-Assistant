@@ -124,3 +124,74 @@ async def test_mcp_server_async_tool_call(owner):
     assert len(results) == 1
     payload = json.loads(results[0].text)
     assert payload["total_workspaces"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Tenant allowlist (MCP_ALLOWED_TENANT_IDS)
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def allow_only_owner(owner, monkeypatch):
+    """Restrict the MCP server to the ``owner`` fixture's workspace."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "MCP_ALLOWED_TENANT_IDS", [owner.tenant_id])
+    return owner
+
+
+def test_allowlist_unset_exposes_every_active_tenant(owner, other_owner):
+    data = json.loads(mcp_server.list_workspaces())
+    names = {w["name"] for w in data["workspaces"]}
+    assert {"Acme Docs", "Globex Docs"} <= names
+
+
+def test_allowlist_hides_other_tenants_from_list_workspaces(allow_only_owner, other_owner):
+    data = json.loads(mcp_server.list_workspaces())
+    assert data["total_workspaces"] == 1
+    assert data["workspaces"][0]["id"] == str(allow_only_owner.tenant_id)
+    assert "Globex Docs" not in json.dumps(data)
+
+
+def test_allowlist_blocks_explicit_id_outside_allowlist(allow_only_owner, other_owner, monkeypatch):
+    """A real but disallowed tenant is indistinguishable from a nonexistent one."""
+    monkeypatch.setattr(
+        "app.rag.chain.semantic_search",
+        lambda *a, **k: pytest.fail("retrieval must not run for a disallowed tenant"),
+    )
+    monkeypatch.setattr(
+        "app.rag.chain.answer_question",
+        lambda *a, **k: pytest.fail("pipeline must not run for a disallowed tenant"),
+    )
+
+    search = json.loads(
+        mcp_server.semantic_search_chunks(query="q", tenant_id=str(other_owner.tenant_id))
+    )
+    query = json.loads(
+        mcp_server.self_rag_query(question="q", tenant_id=str(other_owner.tenant_id))
+    )
+    assert search["error"] == "TenantNotFound"
+    assert query["error"] == "TenantNotFound"
+    assert "Globex" not in search["message"] + query["message"]
+
+
+def test_allowlist_fallback_resolves_to_allowed_tenant_not_oldest(
+    db, other_owner, owner, monkeypatch
+):
+    """With no tenant_id passed, fall back to the first *allowed* tenant."""
+    from app.core.config import settings
+
+    # ``other_owner`` was created first, so it is the oldest tenant; the
+    # allowlist must still win over creation order.
+    monkeypatch.setattr(settings, "MCP_ALLOWED_TENANT_IDS", [owner.tenant_id])
+    monkeypatch.setattr("app.rag.chain.semantic_search", lambda *a, **k: [])
+
+    data = json.loads(mcp_server.semantic_search_chunks(query="q"))
+    assert data["workspace_id"] == str(owner.tenant_id)
+    assert data["workspace_name"] == "Acme Docs"
+
+
+def test_allowlist_still_allows_listed_tenant(allow_only_owner, monkeypatch):
+    monkeypatch.setattr("app.rag.chain.semantic_search", lambda *a, **k: [])
+    data = json.loads(
+        mcp_server.semantic_search_chunks(query="q", tenant_id=str(allow_only_owner.tenant_id))
+    )
+    assert data["workspace_id"] == str(allow_only_owner.tenant_id)

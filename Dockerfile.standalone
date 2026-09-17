@@ -25,7 +25,7 @@ ENV PIP_NO_CACHE_DIR=1 \
     PORT=10000 \
     STATIC_DIR=/app/static \
     DATABASE_URL="sqlite+pysqlite:////app/data/nimbus.db" \
-    LLM_PROVIDER=openai
+    LLM_PROVIDER=anthropic
 
 WORKDIR /app
 

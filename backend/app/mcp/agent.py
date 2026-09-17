@@ -15,13 +15,21 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.types import CallToolResult, Tool
 
 # Determine backend base directory
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Same default as ``app.core.config.Settings.ANTHROPIC_CHAT_MODEL``; kept as a
+# plain env lookup so the agent process does not need to load the full settings.
+DEFAULT_CHAT_MODEL = "claude-haiku-4-5"
+
+# Hard ceiling on model <-> tool round-trips so a confused model cannot loop forever.
+MAX_AGENT_TURNS = 8
 
 
 def get_server_parameters() -> StdioServerParameters:
@@ -32,6 +40,31 @@ def get_server_parameters() -> StdioServerParameters:
         cwd=str(BACKEND_DIR),
         env={**os.environ, "PYTHONPATH": str(BACKEND_DIR)},
     )
+
+
+def tool_result_text(result: CallToolResult) -> str:
+    """Flatten an MCP tool result into a single string for the model.
+
+    FastMCP tools in this project always return one ``TextContent`` block, but
+    the protocol allows images, audio and embedded resources too, so only the
+    text blocks are collected and everything else is described by type.
+    """
+    parts: list[str] = []
+    for block in result.content:
+        text = getattr(block, "text", None)
+        if text is not None:
+            parts.append(text)
+        else:
+            parts.append(f"[non-text {block.type} content omitted]")
+    return "\n".join(parts) if parts else ""
+
+
+class ToolCaller(Protocol):
+    """The slice of ``ClientSession`` the agent loop depends on (mockable in tests)."""
+
+    async def call_tool(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> CallToolResult: ...
 
 
 async def execute_mcp_query(
@@ -61,16 +94,14 @@ async def execute_mcp_query(
         available_tools = tools_response.tools
         print(f"\nDiscovered {len(available_tools)} MCP Tools:")
         for t in available_tools:
-            first_line = t.description.strip().splitlines()[0]
-            print(f"   - {t.name}: {first_line}")
+            first_line = (t.description or "").strip().splitlines()[:1]
+            print(f"   - {t.name}: {first_line[0] if first_line else '(no description)'}")
 
         anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
         # 3. Autonomous Reasoning Loop
         if use_llm and anthropic_api_key:
-            await _run_anthropic_agent_loop(
-                session, available_tools, question, tenant_id, anthropic_api_key
-            )
+            await _run_anthropic_agent_loop(session, available_tools, question, tenant_id)
         else:
             if use_llm and not anthropic_api_key:
                 print("\nNo ANTHROPIC_API_KEY detected. Running in demonstration mode.")
@@ -78,7 +109,7 @@ async def execute_mcp_query(
 
 
 async def _run_deterministic_agent_loop(
-    session: ClientSession,
+    session: ToolCaller,
     question: str,
     tenant_id: str | None,
 ) -> None:
@@ -88,7 +119,7 @@ async def _run_deterministic_agent_loop(
     print("-" * 70)
 
     workspaces_res = await session.call_tool("list_workspaces", {})
-    workspaces_text = workspaces_res.content[0].text
+    workspaces_text = tool_result_text(workspaces_res)
     try:
         workspaces_data = json.loads(workspaces_text)
         workspaces = workspaces_data.get("workspaces", [])
@@ -116,7 +147,7 @@ async def _run_deterministic_agent_loop(
         tool_args["tenant_id"] = selected_tenant
 
     result = await session.call_tool("self_rag_query", tool_args)
-    content_text = result.content[0].text
+    content_text = tool_result_text(result)
 
     try:
         data = json.loads(content_text)
@@ -148,95 +179,137 @@ async def _run_deterministic_agent_loop(
         print(content_text)
 
 
-async def _run_anthropic_agent_loop(
-    session: ClientSession,
-    available_tools: list[Any],
+def mcp_tools_to_anthropic(tools: list[Tool]) -> list[dict[str, Any]]:
+    """Translate MCP tool descriptors into Anthropic ``tools`` entries.
+
+    Both sides speak JSON Schema for parameters, so the translation is a rename:
+    MCP ``inputSchema`` -> Anthropic ``input_schema``.
+    """
+    return [
+        {
+            "name": t.name,
+            "description": t.description or "",
+            "input_schema": t.inputSchema,
+        }
+        for t in tools
+    ]
+
+
+async def run_agent_loop(
+    client: Any,
+    session: ToolCaller,
+    tools: list[dict[str, Any]],
     question: str,
-    tenant_id: str | None,
-    api_key: str,
-) -> None:
-    """Full ReAct loop powered by SyncAnthropic (Claude) tool calling over MCP."""
-    try:
-        from anthropic import Anthropic as SyncAnthropic
+    *,
+    system_prompt: str,
+    model: str,
+    max_turns: int = MAX_AGENT_TURNS,
+    on_tool_call: Any = None,
+) -> str:
+    """ReAct loop: let Claude call MCP tools until it produces a final answer.
 
-        client = SyncAnthropic(api_key=api_key)
+    Every request carries the full ``tools`` list - the API rejects a history
+    that contains ``tool_use``/``tool_result`` blocks without it - and the loop
+    only exits on a non-``tool_use`` stop reason, so the model is free to chain
+    ``list_workspaces`` -> ``self_rag_query`` (or several searches) in one run.
 
-        # Convert MCP tools to Anthropic tool definitions
-        anthropic_tools = [
-            {
-                "name": t.name,
-                "description": t.description,
-                "input_schema": t.inputSchema,
-            }
-            for t in available_tools
-        ]
+    ``client`` is an ``anthropic.AsyncAnthropic``; typed as ``Any`` so tests can
+    substitute a scripted fake without importing the SDK's param types.
+    """
+    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+    response = None
 
-        system_prompt = (
-            "You are an executive research agent. You have access to a Self-RAG Knowledge Base "
-            "via Model Context Protocol (MCP) tools. Always query the MCP tools to verify facts "
-            "before answering. Cite sources appropriately."
-        )
-        if tenant_id:
-            system_prompt += f" The current tenant UUID is {tenant_id}."
-
-        messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
-
-        print("\n" + "-" * 70)
-        print("Agent Reasoning: Invoking tool via Anthropic Claude...")
-        print("-" * 70)
-
-        response = client.messages.create(
-            model=os.getenv("ANTHROPIC_CHAT_MODEL", "claude-3-5-haiku-20241022"),
-            max_tokens=1024,
+    for _turn in range(max_turns):
+        response = await client.messages.create(
+            model=model,
+            max_tokens=4096,
             system=system_prompt,
             messages=messages,
-            tools=anthropic_tools,
+            tools=tools,
         )
 
-        tool_uses = [c for c in response.content if c.type == "tool_use"]
-        if tool_uses:
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = []
-            for tool_use in tool_uses:
-                fn_name = tool_use.name
-                fn_args = tool_use.input or {}
-                print(f"Agent invoking MCP tool: '{fn_name}' with args: {fn_args}")
+        if response.stop_reason != "tool_use":
+            break
 
-                mcp_res = await session.call_tool(fn_name, fn_args)
-                tool_output = mcp_res.content[0].text
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use.id,
-                        "content": tool_output,
-                    }
-                )
+        tool_uses = [b for b in response.content if b.type == "tool_use"]
+        # The assistant turn must be echoed back verbatim, tool_use blocks included.
+        messages.append({"role": "assistant", "content": response.content})
 
-            messages.append({"role": "user", "content": tool_results})
+        tool_results: list[dict[str, Any]] = []
+        for tool_use in tool_uses:
+            fn_args = dict(tool_use.input or {})
+            if on_tool_call is not None:
+                on_tool_call(tool_use.name, fn_args)
 
-            final_res = client.messages.create(
-                model=os.getenv("ANTHROPIC_CHAT_MODEL", "claude-3-5-haiku-20241022"),
-                max_tokens=1024,
-                system=system_prompt,
-                messages=messages,
-            )
-            final_text = "".join(b.text for b in final_res.content if hasattr(b, "text"))
-            print("\n" + "=" * 70)
-            print("Final Agent Response (Anthropic Claude)")
-            print("=" * 70)
-            print(final_text)
-        else:
-            final_text = "".join(b.text for b in response.content if hasattr(b, "text"))
-            print("\n" + "=" * 70)
-            print("Final Agent Response (Direct Claude)")
-            print("=" * 70)
-            print(final_text)
+            mcp_res = await session.call_tool(tool_use.name, fn_args)
+            block: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": tool_use.id,
+                "content": tool_result_text(mcp_res),
+            }
+            if mcp_res.isError:
+                block["is_error"] = True
+            tool_results.append(block)
 
-    except Exception as exc:
-        print(f"Anthropic execution error: {exc}. Falling back to deterministic mode.")
+        # All results for one assistant turn go back in a single user message.
+        messages.append({"role": "user", "content": tool_results})
+    else:
+        return (
+            f"Agent stopped after {max_turns} tool-calling turns without a final answer."
+        )
+
+    assert response is not None
+    return "".join(b.text for b in response.content if b.type == "text")
+
+
+async def _run_anthropic_agent_loop(
+    session: ClientSession,
+    available_tools: list[Tool],
+    question: str,
+    tenant_id: str | None,
+) -> None:
+    """Full ReAct loop powered by Anthropic Claude tool calling over MCP."""
+    import anthropic
+
+    # AsyncAnthropic keeps the event loop free so the MCP stdio reader task can
+    # keep servicing the session while a model request is in flight.
+    client = anthropic.AsyncAnthropic()
+    model = os.getenv("ANTHROPIC_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+
+    system_prompt = (
+        "You are an executive research agent. You have access to a Self-RAG Knowledge Base "
+        "via Model Context Protocol (MCP) tools. Always query the MCP tools to verify facts "
+        "before answering. Cite sources appropriately."
+    )
+    if tenant_id:
+        system_prompt += f" The current tenant UUID is {tenant_id}."
+
+    print("\n" + "-" * 70)
+    print(f"Agent Reasoning: Claude ({model}) tool-calling loop over MCP...")
+    print("-" * 70)
+
+    def _log_tool_call(name: str, args: dict[str, Any]) -> None:
+        print(f"Agent invoking MCP tool: '{name}' with args: {args}")
+
+    try:
+        final_text = await run_agent_loop(
+            client,
+            session,
+            mcp_tools_to_anthropic(available_tools),
+            question,
+            system_prompt=system_prompt,
+            model=model,
+            on_tool_call=_log_tool_call,
+        )
+    except anthropic.APIError as exc:
+        print(f"Anthropic API error: {exc}. Falling back to deterministic mode.")
         await _run_deterministic_agent_loop(session, question, tenant_id)
+        return
 
-
+    print("\n" + "=" * 70)
+    print("Final Agent Response (Anthropic Claude)")
+    print("=" * 70)
+    print(final_text)
 
 
 def main():

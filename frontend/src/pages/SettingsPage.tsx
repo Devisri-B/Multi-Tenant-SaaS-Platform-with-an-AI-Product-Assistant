@@ -96,14 +96,14 @@ export function SettingsPage() {
             variant={theme === 'light' ? 'primary' : 'secondary'}
             onClick={() => setTheme('light')}
           >
-            Bright (Light) Mode
+            ☀️ Bright (Light) Mode
           </Button>
           <Button
             type="button"
             variant={theme === 'dark' ? 'primary' : 'secondary'}
             onClick={() => setTheme('dark')}
           >
-            Dark Mode
+            🌙 Dark Mode
           </Button>
         </div>
       </Card>

@@ -5,6 +5,11 @@ Exposes three tools via the standard MCP protocol:
 2. `semantic_search_chunks`: Direct vector retrieval via pgvector.
 3. `self_rag_query`: Full LangGraph Self-RAG answering workflow with grading
    and hallucination reduction.
+
+Tenant isolation: every tool resolves its workspace through
+``_allowed_tenants_query``, which applies ``MCP_ALLOWED_TENANT_IDS`` when set.
+A tenant outside the allowlist is treated exactly like one that does not exist,
+so the server neither lists nor confirms the existence of other workspaces.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ except Exception:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
+from app.core.config import settings  # noqa: E402
 from app.db.session import session_scope  # noqa: E402
 from app.models.tenant import Tenant  # noqa: E402
 from app.rag import chain as rag_chain  # noqa: E402
@@ -52,26 +58,25 @@ mcp = FastMCP(
 )
 
 
+def _allowed_tenants_query(db: Session):
+    """Active, non-deleted tenants, narrowed to ``MCP_ALLOWED_TENANT_IDS`` when set."""
+    query = db.query(Tenant).filter(Tenant.deleted_at.is_(None), Tenant.is_active.is_(True))
+    if settings.MCP_ALLOWED_TENANT_IDS:
+        query = query.filter(Tenant.id.in_(settings.MCP_ALLOWED_TENANT_IDS))
+    return query
+
+
 def _resolve_tenant(db: Session, tenant_id_str: str | None) -> Tenant | None:
-    """Resolve a tenant by UUID string or fallback to the first active tenant."""
+    """Resolve a tenant by UUID string or fallback to the first allowed tenant."""
     if tenant_id_str:
         try:
             tenant_uuid = uuid.UUID(tenant_id_str)
-            return (
-                db.query(Tenant)
-                .filter(Tenant.id == tenant_uuid, Tenant.deleted_at.is_(None))
-                .first()
-            )
         except (ValueError, TypeError):
             return None
+        return _allowed_tenants_query(db).filter(Tenant.id == tenant_uuid).first()
 
-    # Fallback to the first active workspace if none was passed
-    return (
-        db.query(Tenant)
-        .filter(Tenant.deleted_at.is_(None), Tenant.is_active.is_(True))
-        .order_by(Tenant.created_at.asc())
-        .first()
-    )
+    # Fallback to the first allowed workspace if none was passed
+    return _allowed_tenants_query(db).order_by(Tenant.created_at.asc()).first()
 
 
 @mcp.tool(structured_output=False)
@@ -79,11 +84,7 @@ def list_workspaces() -> str:
     """List available tenant workspaces (names, UUIDs, slugs) that can be queried."""
     try:
         with session_scope() as db:
-            tenants = (
-                db.query(Tenant)
-                .filter(Tenant.deleted_at.is_(None), Tenant.is_active.is_(True))
-                .all()
-            )
+            tenants = _allowed_tenants_query(db).order_by(Tenant.created_at.asc()).all()
             workspaces = [
                 {
                     "id": str(t.id),
@@ -261,6 +262,16 @@ def self_rag_query(
 def main():
     """Run the FastMCP server over stdio transport."""
     logger.info("Starting FastMCP server '%s' on stdio transport...", mcp.name)
+    if settings.MCP_ALLOWED_TENANT_IDS:
+        logger.info(
+            "Tenant allowlist active: %d workspace(s) exposed.",
+            len(settings.MCP_ALLOWED_TENANT_IDS),
+        )
+    else:
+        logger.warning(
+            "MCP_ALLOWED_TENANT_IDS is unset - every active workspace is exposed. "
+            "Set it before connecting anything other than a local client."
+        )
     mcp.run(transport="stdio")
 
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import uuid
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -40,14 +41,16 @@ class Settings(BaseSettings):
     SQL_ECHO: bool = False
 
     # -- CORS ---------------------------------------------------------------
-    BACKEND_CORS_ORIGINS: list[str] = Field(
+    # ``NoDecode`` hands the raw env string to ``_parse_list`` instead of
+    # letting pydantic-settings JSON-decode it first, so comma-separated values work.
+    BACKEND_CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"]
     )
 
     # -- LLM / RAG / LangGraph ----------------------------------------------
     LLM_PROVIDER: Literal["anthropic", "fake"] = "anthropic"
     ANTHROPIC_API_KEY: str | None = None
-    ANTHROPIC_CHAT_MODEL: str = "claude-3-5-haiku-20241022"
+    ANTHROPIC_CHAT_MODEL: str = "claude-haiku-4-5"
     EMBEDDING_PROVIDER: Literal["sentence_transformers", "fake"] = "sentence_transformers"
     SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DEVICE: str = "cpu"
@@ -77,13 +80,19 @@ class Settings(BaseSettings):
     RAG_MEMORY_WINDOW_SIZE: int = 6
     RAG_ENABLE_QUERY_REWRITE: bool = True
 
+    # -- MCP Server ---------------------------------------------------------
+    # Workspaces the MCP server may expose. Empty means every active tenant
+    # (acceptable for a local stdio server; set this before exposing the
+    # server to anything beyond the developer's own machine).
+    MCP_ALLOWED_TENANT_IDS: Annotated[list[uuid.UUID], NoDecode] = Field(default_factory=list)
+
     # -- Storage ------------------------------------------------------------
     STORAGE_DIR: str = "./storage"
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
-    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @field_validator("BACKEND_CORS_ORIGINS", "MCP_ALLOWED_TENANT_IDS", mode="before")
     @classmethod
-    def _parse_cors(cls, value: Any) -> Any:
+    def _parse_list(cls, value: Any) -> Any:
         """Accept either a JSON array or a comma-separated string."""
         if isinstance(value, str):
             value = value.strip()

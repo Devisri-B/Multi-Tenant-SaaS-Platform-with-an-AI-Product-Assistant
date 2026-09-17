@@ -42,7 +42,7 @@ flowchart TB
         Memory["Sliding Window Memory<br/>(Coreference Reformulator)"]
         Retriever["pgvector Retrieval<br/>(Cosine Similarity Threshold 0.40)"]
         DocGrader{"Document Grader<br/>(Relevance Filter)"}
-        Generator["Contextual Generator<br/>(Anthropic Claude 3.5 Haiku)"]
+        Generator["Contextual Generator<br/>(Anthropic Claude Haiku 4.5)"]
         HallucinationGrader{"Hallucination Reductor<br/>(DeBERTa-v3 NLI Entailment)"}
         WebSearch["Dynamic Web Fallback<br/>(DuckDuckGo / Tavily Citations)"]
         FinalAnswer["Verified Response + Citations"]
@@ -156,7 +156,7 @@ python -m app.mcp.agent --offline
 # 2. Ask a specific query in offline mode:
 python -m app.mcp.agent --question "What is the refund policy?" --offline
 
-# 3. Live LLM mode with SyncAnthropic Claude tool calling over MCP:
+# 3. Live LLM mode: Claude tool-calling loop (AsyncAnthropic) over MCP:
 export ANTHROPIC_API_KEY="sk-ant-..."
 python -m app.mcp.agent --question "Explain the document upload limits."
 ```
@@ -173,12 +173,15 @@ Connect Claude Desktop or Cursor directly to your private tenant knowledge base 
       "args": ["-m", "app.mcp.server"],
       "cwd": "/path/to/SAAS/backend",
       "env": {
-        "DATABASE_URL": "postgresql+psycopg://postgres:postgres@localhost:5432/saas_db"
+        "DATABASE_URL": "postgresql+psycopg://postgres:postgres@localhost:5432/saas_db",
+        "MCP_ALLOWED_TENANT_IDS": "<workspace-uuid>,<workspace-uuid>"
       }
     }
   }
 }
 ```
+
+`MCP_ALLOWED_TENANT_IDS` scopes the server to specific workspaces: `list_workspaces` only returns them, and a `tenant_id` outside the list is reported as `TenantNotFound` (indistinguishable from a nonexistent one) before any retrieval runs. Leave it empty only for a local stdio server.
 
 ---
 
@@ -350,7 +353,7 @@ See `.env.example` for the full list. The ones that matter most:
 | `DATABASE_URL` | assembled from `POSTGRES_*` | Overrides the parts |
 | `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic) or `fake` |
 | `ANTHROPIC_API_KEY` | - | Required when `LLM_PROVIDER=anthropic` |
-| `ANTHROPIC_CHAT_MODEL` | `claude-3-5-haiku-20241022` | Anthropic Claude model checkpoint |
+| `ANTHROPIC_CHAT_MODEL` | `claude-haiku-4-5` | Anthropic Claude model checkpoint |
 | `EMBEDDING_PROVIDER` | `sentence_transformers` | `sentence_transformers` (local embeddings) or `fake` |
 | `SENTENCE_TRANSFORMER_MODEL` | `all-MiniLM-L6-v2` | Local Hugging Face sentence embedding model |
 | `EMBEDDING_DIMENSIONS` | `384` | Embedding vector width |
@@ -359,6 +362,7 @@ See `.env.example` for the full list. The ones that matter most:
 | `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |
 | `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `250` / `40` | Tokens (token-based via `count_tokens`) |
 | `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.40` | Retrieval budget and tuned cosine similarity floor |
+| `MCP_ALLOWED_TENANT_IDS` | *(empty = all)* | Comma-separated workspace UUIDs the MCP server may expose; disallowed tenants are reported as not found |
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 [`docs/RAG.md`](docs/RAG.md).

@@ -67,7 +67,7 @@ export function Layout() {
             title={theme === 'dark' ? 'Switch to Bright Mode' : 'Switch to Dark Mode'}
           >
             <span>Theme</span>
-            <span>{theme === 'dark' ? 'Bright' : 'Dark'}</span>
+            <span>{theme === 'dark' ? '☀️ Bright' : '🌙 Dark'}</span>
           </button>
 
           <div className="sidebar__user">
