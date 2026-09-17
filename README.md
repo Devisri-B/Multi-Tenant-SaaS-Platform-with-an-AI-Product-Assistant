@@ -4,7 +4,7 @@ A production-grade SaaS platform featuring isolated customer workspaces served
 from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
 powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
 
-**Stack** — Python · FastAPI · LangGraph · LangChain · FastMCP (Model Context Protocol) · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
+**Stack** — Python · FastAPI · LangGraph · Anthropic Claude (SyncAnthropic) · FastMCP · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
 
 > 🚀 **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
 > 🔑 **Seeded Demo Account**: Email: `owner@nimbus.dev` · Password: `DemoPassw0rd`
@@ -277,7 +277,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 151 tests, SQLite in-memory, no external services
+make test         # 155 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -298,7 +298,7 @@ backend/
     rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain, DeBERTa NLI
     mcp/          FastMCP server (stdio), autonomous tool-calling client agent
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          151 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, DeBERTa NLI, memory and isolation
+  tests/          155 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, DeBERTa NLI, Claude, memory and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh
@@ -349,8 +349,10 @@ See `.env.example` for the full list. The ones that matter most:
 | --- | --- | --- |
 | `SECRET_KEY` | dev placeholder | **Must** be replaced in production |
 | `DATABASE_URL` | assembled from `POSTGRES_*` | Overrides the parts |
-| `LLM_PROVIDER` | `openai` | Set to `fake` for offline/CI |
-| `OPENAI_API_KEY` | — | Required when `LLM_PROVIDER=openai` |
+| `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic), `openai`, or `fake` |
+| `ANTHROPIC_API_KEY` | — | Required when `LLM_PROVIDER=anthropic` |
+| `ANTHROPIC_CHAT_MODEL` | `claude-3-5-haiku-20241022` | Anthropic Claude model checkpoint |
+| `OPENAI_API_KEY` | — | Required when using OpenAI embeddings |
 | `EMBEDDING_DIMENSIONS` | `1536` | Must match the migration's vector width |
 | `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (zero-API-cost local NLI), `llm`, or `fake` |
 | `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |

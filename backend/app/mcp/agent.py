@@ -60,14 +60,17 @@ async def execute_mcp_query(
             for t in available_tools:
                 print(f"   • {t.name}: {t.description.strip().splitlines()[0]}")
 
+            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
             openai_api_key = os.getenv("OPENAI_API_KEY")
 
             # 3. Autonomous Reasoning Loop
-            if use_llm and openai_api_key:
-                await _run_llm_agent_loop(session, available_tools, question, tenant_id)
+            if use_llm and anthropic_api_key:
+                await _run_anthropic_agent_loop(session, available_tools, question, tenant_id, anthropic_api_key)
+            elif use_llm and openai_api_key:
+                await _run_openai_agent_loop(session, available_tools, question, tenant_id)
             else:
-                if not openai_api_key and use_llm:
-                    print("\n⚠️  No OPENAI_API_KEY detected. Running in deterministic Agent Demonstration Mode.")
+                if use_llm and not anthropic_api_key and not openai_api_key:
+                    print("\n⚠️  Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY detected. Running in deterministic Agent Demonstration Mode.")
                 await _run_deterministic_agent_loop(session, question, tenant_id)
 
 
@@ -142,7 +145,96 @@ async def _run_deterministic_agent_loop(
         print(content_text)
 
 
-async def _run_llm_agent_loop(
+async def _run_anthropic_agent_loop(
+    session: ClientSession,
+    available_tools: list[Any],
+    question: str,
+    tenant_id: str | None,
+    api_key: str,
+) -> None:
+    """Full ReAct loop powered by SyncAnthropic (Claude) tool calling over MCP."""
+    try:
+        from anthropic import Anthropic as SyncAnthropic
+
+        client = SyncAnthropic(api_key=api_key)
+
+        # Convert MCP tools to Anthropic tool definitions
+        anthropic_tools = [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.inputSchema,
+            }
+            for t in available_tools
+        ]
+
+        system_prompt = (
+            "You are an executive research agent. You have access to a Self-RAG Knowledge Base "
+            "via Model Context Protocol (MCP) tools. Always query the MCP tools to verify facts "
+            "before answering. Cite sources appropriately."
+        )
+        if tenant_id:
+            system_prompt += f" The current tenant UUID is {tenant_id}."
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+
+        print("\n" + "-" * 70)
+        print("🧠 AGENT REASONING: Planning tool invocation with SyncAnthropic (Claude)...")
+        print("-" * 70)
+
+        response = client.messages.create(
+            model=os.getenv("ANTHROPIC_CHAT_MODEL", "claude-3-5-haiku-20241022"),
+            max_tokens=1024,
+            system=system_prompt,
+            messages=messages,
+            tools=anthropic_tools,
+        )
+
+        tool_uses = [c for c in response.content if c.type == "tool_use"]
+        if tool_uses:
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+            for tool_use in tool_uses:
+                fn_name = tool_use.name
+                fn_args = tool_use.input or {}
+                print(f" Agent invoking MCP tool: '{fn_name}' with args: {fn_args}")
+
+                mcp_res = await session.call_tool(fn_name, fn_args)
+                tool_output = mcp_res.content[0].text
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use.id,
+                        "content": tool_output,
+                    }
+                )
+
+            messages.append({"role": "user", "content": tool_results})
+
+            final_res = client.messages.create(
+                model=os.getenv("ANTHROPIC_CHAT_MODEL", "claude-3-5-haiku-20241022"),
+                max_tokens=1024,
+                system=system_prompt,
+                messages=messages,
+            )
+            final_text = "".join(b.text for b in final_res.content if hasattr(b, "text"))
+            print("\n" + "=" * 70)
+            print("🎯 FINAL AGENT SYNTHESIS (Anthropic Claude)")
+            print("=" * 70)
+            print(final_text)
+        else:
+            final_text = "".join(b.text for b in response.content if hasattr(b, "text"))
+            print("\n" + "=" * 70)
+            print("🎯 AGENT RESPONSE (Direct Claude)")
+            print("=" * 70)
+            print(final_text)
+
+    except Exception as exc:
+        print(f"⚠️  Anthropic execution error: {exc}. Falling back to deterministic mode.")
+        await _run_deterministic_agent_loop(session, question, tenant_id)
+
+
+async def _run_openai_agent_loop(
     session: ClientSession,
     available_tools: list[Any],
     question: str,

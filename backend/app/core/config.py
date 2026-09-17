@@ -45,7 +45,9 @@ class Settings(BaseSettings):
     )
 
     # -- LLM / RAG / LangGraph ----------------------------------------------
-    LLM_PROVIDER: Literal["openai", "fake"] = "openai"
+    LLM_PROVIDER: Literal["anthropic", "openai", "fake"] = "anthropic"
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_CHAT_MODEL: str = "claude-3-5-haiku-20241022"
     OPENAI_API_KEY: str | None = None
     OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"

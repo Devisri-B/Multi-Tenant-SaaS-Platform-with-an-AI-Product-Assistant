@@ -263,11 +263,44 @@ class OpenAIChat(ChatProvider):
             raise ProviderError(f"Chat completion failed: {exc}") from exc
 
 
+class AnthropicChat(ChatProvider):
+    """Synchronous Anthropic Claude client for chat completions using SyncAnthropic."""
+
+    def __init__(self) -> None:
+        if not settings.ANTHROPIC_API_KEY:
+            raise ProviderError("ANTHROPIC_API_KEY is not configured.")
+        from anthropic import Anthropic as SyncAnthropic
+
+        self._client = SyncAnthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
+            timeout=45.0,
+            max_retries=2,
+        )
+        self.model = settings.ANTHROPIC_CHAT_MODEL
+
+    def complete(self, system_prompt: str, user_prompt: str) -> str:
+        try:
+            message = self._client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                temperature=0.1,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            parts = [block.text for block in message.content if hasattr(block, "text")]
+            return "".join(parts).strip()
+        except Exception as exc:  # pragma: no cover - network path
+            raise ProviderError(f"Anthropic chat completion failed: {exc}") from exc
+
+
 # ---------------------------------------------------------------------------
 # Factories
 # ---------------------------------------------------------------------------
 @lru_cache
 def get_embedding_provider() -> EmbeddingProvider:
+    # Anthropic does not provide embeddings; use OpenAI embeddings if key is present
+    if settings.LLM_PROVIDER in ("anthropic", "openai") and settings.OPENAI_API_KEY:
+        return OpenAIEmbeddings()
     if settings.LLM_PROVIDER == "openai":
         return OpenAIEmbeddings()
     return FakeEmbeddings()
@@ -275,6 +308,8 @@ def get_embedding_provider() -> EmbeddingProvider:
 
 @lru_cache
 def get_chat_provider() -> ChatProvider:
+    if settings.LLM_PROVIDER == "anthropic":
+        return AnthropicChat()
     if settings.LLM_PROVIDER == "openai":
         return OpenAIChat()
     return FakeChat()
