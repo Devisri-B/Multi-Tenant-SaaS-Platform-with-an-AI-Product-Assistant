@@ -34,7 +34,7 @@ flowchart TB
         direction TB
         Repo["TenantScopedRepository<br/>(Mandatory WHERE tenant_id = :id)"]
         RelationalDB[("Relational Data<br/>Tenants · Users · Memberships<br/>Conversations · AuditLogs")]
-        PGVectorDB[("Vector Storage (pgvector)<br/>Document Chunks (1536-dim)<br/>ivfflat Cosine Index")]
+        PGVectorDB[("Vector Storage (pgvector)<br/>Document Chunks (384-dim)<br/>ivfflat Cosine Index")]
     end
 
     subgraph RAGWorkflow ["4. Adaptive Self-RAG Engine (LangGraph)"]
@@ -359,7 +359,7 @@ See `.env.example` for the full list. The ones that matter most:
 | `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (zero-API-cost local NLI), `llm`, or `fake` |
 | `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |
 | `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |
-| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `900` / `150` | Characters |
+| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `250` / `40` | Tokens (Anthropic token-based chunking without `tiktoken`) |
 | `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.15` | Retrieval budget and floor |
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·

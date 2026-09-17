@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     SENTENCE_TRANSFORMER_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DEVICE: str = "cpu"
     EMBEDDING_DIMENSIONS: int = 384
-    RAG_CHUNK_SIZE: int = 900
-    RAG_CHUNK_OVERLAP: int = 150
+    RAG_CHUNK_SIZE: int = 250
+    RAG_CHUNK_OVERLAP: int = 40
     RAG_TOP_K: int = 5
     RAG_MIN_SCORE: float = 0.15
     DOCUMENT_RELEVANCE_THRESHOLD: float = 0.25

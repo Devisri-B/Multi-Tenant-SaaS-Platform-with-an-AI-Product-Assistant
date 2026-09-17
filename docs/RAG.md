@@ -24,7 +24,16 @@ the index.
 `RecursiveCharacterTextSplitter` splits on the separators
 `["\n## ", "\n### ", "\n\n", "\n", ". ", " ", ""]` — headings first, then
 paragraphs, then sentences — with a pure-Python fallback if LangChain is
-absent. Defaults are 900 characters with 150 of overlap.
+absent.
+
+Rather than character-based counting (`len`), chunking uses a token-based
+`length_function=count_tokens`. Anthropic models measure context in tokens,
+and Anthropic provides native token counting via its API (`client.messages.count_tokens`),
+eliminating OpenAI's requirement for the external `tiktoken` library. When
+running offline, in CI test suites, or without an active API connection,
+a fast local subword token counter evaluates token bounds without requiring
+`tiktoken`. Defaults are 250 tokens with 40 tokens of overlap (matching the
+`all-MiniLM-L6-v2` 256-token sequence limit).
 
 The most recent heading seen is carried onto each chunk's metadata, so a chunk
 lifted out of the middle of a document still knows which section it came from.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.rag.chunking import chunk_text, estimate_tokens
+from app.rag.chunking import chunk_text, count_tokens, estimate_tokens
 from app.rag.providers import FakeChat, FakeEmbeddings
 from app.rag.retriever import cosine_similarity
 
@@ -21,20 +21,20 @@ Refunds are issued to the original payment method within ten business days.
 
 
 def test_chunking_returns_ordered_chunks():
-    chunks = chunk_text(SAMPLE, chunk_size=120, chunk_overlap=20)
+    chunks = chunk_text(SAMPLE, chunk_size=20, chunk_overlap=5)
     assert len(chunks) > 1
     assert [chunk.ordinal for chunk in chunks] == list(range(len(chunks)))
 
 
 def test_chunking_preserves_all_words():
-    chunks = chunk_text(SAMPLE, chunk_size=120, chunk_overlap=20)
+    chunks = chunk_text(SAMPLE, chunk_size=20, chunk_overlap=5)
     joined = " ".join(chunk.content for chunk in chunks)
     assert "Refunds are issued" in joined
     assert "Invoices are generated" in joined
 
 
 def test_chunking_attaches_heading_metadata():
-    chunks = chunk_text(SAMPLE, chunk_size=120, chunk_overlap=20)
+    chunks = chunk_text(SAMPLE, chunk_size=20, chunk_overlap=5)
     assert any("heading" in chunk.metadata for chunk in chunks)
 
 
@@ -44,11 +44,66 @@ def test_empty_text_produces_no_chunks():
 
 def test_overlap_must_be_smaller_than_size():
     with pytest.raises(ValueError):
-        chunk_text(SAMPLE, chunk_size=100, chunk_overlap=100)
+        chunk_text(SAMPLE, chunk_size=20, chunk_overlap=20)
 
 
 def test_token_estimate_is_positive():
     assert estimate_tokens("hello world") >= 1
+
+
+def test_count_tokens_local_and_estimate():
+    assert count_tokens("") == 0
+    assert count_tokens("hello world") >= 2
+    assert estimate_tokens("hello world") == count_tokens("hello world")
+
+
+def test_count_tokens_anthropic_client_integration():
+    from unittest.mock import MagicMock
+
+    from app.core.config import settings
+    from app.rag.chunking import set_anthropic_client
+
+    mock_client = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.input_tokens = 42
+    mock_client.messages.count_tokens.return_value = mock_resp
+
+    old_provider = settings.LLM_PROVIDER
+    try:
+        settings.LLM_PROVIDER = "anthropic"
+        set_anthropic_client(mock_client)
+        tokens = count_tokens("test custom token count")
+        assert tokens == 42
+        mock_client.messages.count_tokens.assert_called_once()
+    finally:
+        settings.LLM_PROVIDER = old_provider
+        set_anthropic_client(None)
+
+
+def test_count_tokens_anthropic_fallback_on_error():
+    from unittest.mock import MagicMock
+
+    from app.core.config import settings
+    from app.rag.chunking import set_anthropic_client
+
+    mock_client = MagicMock()
+    mock_client.messages.count_tokens.side_effect = RuntimeError("Anthropic rate limit")
+
+    old_provider = settings.LLM_PROVIDER
+    try:
+        settings.LLM_PROVIDER = "anthropic"
+        set_anthropic_client(mock_client)
+        tokens = count_tokens("fallback text token count")
+        assert tokens > 0
+    finally:
+        settings.LLM_PROVIDER = old_provider
+        set_anthropic_client(None)
+
+
+def test_chunking_chunks_respect_token_limits():
+    chunks = chunk_text(SAMPLE, chunk_size=20, chunk_overlap=5)
+    for chunk in chunks:
+        assert chunk.token_estimate <= 20
 
 
 def test_fake_embeddings_are_deterministic():
