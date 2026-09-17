@@ -1,4 +1,4 @@
-"""Workspace lifecycle and — critically — cross-tenant isolation."""
+"""Workspace lifecycle and - critically - cross-tenant isolation."""
 
 from __future__ import annotations
 

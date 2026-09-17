@@ -74,6 +74,6 @@ def answer_question(
 def semantic_search(
     db: Session, *, tenant_id: uuid.UUID, query: str, top_k: int = 5
 ) -> list[RetrievedChunk]:
-    """Retrieval without generation — powers the docs search box."""
+    """Retrieval without generation - powers the docs search box."""
     query_vector = get_embedding_provider().embed_query(query)
     return retrieve(db, tenant_id=tenant_id, query_embedding=query_vector, top_k=top_k)

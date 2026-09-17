@@ -1,8 +1,8 @@
 """LLM and embedding providers.
 
-Production uses Anthropic Claude (via SyncAnthropic) for chat generation and
-local SentenceTransformers (all-MiniLM-L6-v2) for zero-API-cost vector embeddings.
-Tests and offline development use FakeEmbeddings and FakeChat — the pipeline
+Production uses Anthropic Claude (SyncAnthropic) for chat generation and
+SentenceTransformers (all-MiniLM-L6-v2) for vector embeddings.
+Tests and offline development use FakeEmbeddings and FakeChat - the pipeline
 exercises exactly the same code paths without a network call or an API key.
 """
 
@@ -13,6 +13,7 @@ import math
 import re
 from abc import ABC, abstractmethod
 from functools import lru_cache
+from typing import Any
 
 from app.core.config import settings
 from app.core.exceptions import ProviderError

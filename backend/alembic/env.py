@@ -1,4 +1,4 @@
-"""Alembic environment — reads the URL from application settings."""
+"""Alembic environment - reads the URL from application settings."""
 
 from __future__ import annotations
 

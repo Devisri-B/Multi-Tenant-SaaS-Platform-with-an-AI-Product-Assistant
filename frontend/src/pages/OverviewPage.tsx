@@ -28,7 +28,7 @@ export function OverviewPage() {
       </header>
 
       <Banner tone="error">{error}</Banner>
-      {loading ? <Spinner label="Loading workspace stats…" /> : null}
+      {loading ? <Spinner label="Loading workspace stats..." /> : null}
 
       {data ? (
         <div className="stat-grid">
@@ -43,7 +43,7 @@ export function OverviewPage() {
       <Card title="Get started">
         <ol className="steps">
           <li>
-            <Link to="/documents">Upload your product documentation</Link> — Markdown, text or PDF.
+            <Link to="/documents">Upload your product documentation</Link> - Markdown, text or PDF.
           </li>
           <li>
             <Link to="/members">Invite your team</Link> and assign roles.

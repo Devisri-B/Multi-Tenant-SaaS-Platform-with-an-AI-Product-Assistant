@@ -1,4 +1,4 @@
-/** Typed endpoint functions — one per backend route the UI uses. */
+/** Typed endpoint functions - one per backend route the UI uses. */
 
 import { api, tokenStore } from '@/api/client'
 import type {

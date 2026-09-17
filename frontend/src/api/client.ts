@@ -99,7 +99,7 @@ function expandValidationErrors(body: ApiErrorBody): string {
     })
     .filter((line): line is string => Boolean(line))
 
-  return lines.length > 0 ? lines.join(' · ') : body.message
+  return lines.length > 0 ? lines.join(' | ') : body.message
 }
 
 async function parseError(response: Response): Promise<ApiError> {
@@ -116,7 +116,7 @@ async function parseError(response: Response): Promise<ApiError> {
       }
     }
   } catch {
-    // Response had no JSON body — keep the generic message.
+    // Response had no JSON body - keep the generic message.
   }
   return new ApiError(response.status, body)
 }

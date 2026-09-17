@@ -78,7 +78,7 @@ def _trim_context(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
 def _to_doc_citation(index: int, chunk: RetrievedChunk) -> dict[str, Any]:
     excerpt = chunk.content.strip().replace("\n", " ")
     if len(excerpt) > EXCERPT_CHARS:
-        excerpt = excerpt[: EXCERPT_CHARS - 1].rstrip() + "…"
+        excerpt = excerpt[: EXCERPT_CHARS - 3].rstrip() + "..."
     return {
         "index": index,
         "document_id": str(chunk.document_id),
@@ -95,7 +95,7 @@ def _to_doc_citation(index: int, chunk: RetrievedChunk) -> dict[str, Any]:
 def _to_web_citation(index: int, result: WebSearchResult) -> dict[str, Any]:
     excerpt = result.snippet.strip().replace("\n", " ")
     if len(excerpt) > EXCERPT_CHARS:
-        excerpt = excerpt[: EXCERPT_CHARS - 1].rstrip() + "…"
+        excerpt = excerpt[: EXCERPT_CHARS - 3].rstrip() + "..."
     return {
         "index": index,
         "document_id": None,
@@ -323,7 +323,7 @@ def grade_hallucination_node(state: AssistantState) -> dict[str, Any]:
     ]
     context_block = prompts.build_context_block(passages)
 
-    # 1. Check Hallucination (Zero-API-cost NLI entailment scoring via DeBERTa-v3 or configured provider)
+    # 1. Check Hallucination (NLI entailment scoring via configured provider)
     from app.rag.nli import get_nli_provider
 
     nli_provider = get_nli_provider()

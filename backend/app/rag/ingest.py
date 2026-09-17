@@ -64,7 +64,7 @@ def _embed_in_batches(texts: list[str]) -> list[list[float]]:
 
 
 def index_document(db: Session, document: Document, text: str) -> Document:
-    """Chunk, embed and persist a document. Idempotent — re-indexing replaces."""
+    """Chunk, embed and persist a document. Idempotent - re-indexing replaces."""
     document.status = DocumentStatus.PROCESSING
     document.error_message = None
     db.flush()

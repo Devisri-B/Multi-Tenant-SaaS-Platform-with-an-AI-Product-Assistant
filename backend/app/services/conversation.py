@@ -46,7 +46,7 @@ def derive_title(question: str) -> str:
     cleaned = " ".join(question.strip().split())
     if len(cleaned) <= TITLE_MAX:
         return cleaned or "New conversation"
-    return cleaned[: TITLE_MAX - 1].rstrip() + "…"
+    return cleaned[: TITLE_MAX - 3].rstrip() + "..."
 
 
 def get_or_create_conversation(

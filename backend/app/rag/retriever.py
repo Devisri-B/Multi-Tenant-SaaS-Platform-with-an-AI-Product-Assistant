@@ -47,7 +47,7 @@ def build_pgvector_query(
     """Build the nearest-neighbour statement pushed down to pgvector.
 
     Kept separate from execution so it can be compiled against the Postgres
-    dialect in tests without a live server — the SQLite test path never
+    dialect in tests without a live server - the SQLite test path never
     exercises this branch, and a missing operator only surfaces at query-build
     time.
     """

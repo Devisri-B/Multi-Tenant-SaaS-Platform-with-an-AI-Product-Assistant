@@ -96,7 +96,7 @@ def test_documents_index_on_postgres(pg_session, seeded):
 
 
 def test_pgvector_retrieval_returns_ranked_hits(pg_session, seeded):
-    """The <=> operator path — the one SQLite never exercises."""
+    """The <=> operator path - the one SQLite never exercises."""
     from app.rag.chain import semantic_search
 
     mine, _ = seeded

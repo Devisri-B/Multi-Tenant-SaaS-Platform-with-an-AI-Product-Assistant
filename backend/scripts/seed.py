@@ -76,7 +76,7 @@ def main() -> None:
 
     with session_scope() as db:
         if auth_service.get_user_by_email(db, "owner@nimbus.dev"):
-            print("Demo data already present — nothing to do.")
+            print("Demo data already present - nothing to do.")
             return
 
         owner = auth_service.create_user(

@@ -23,11 +23,11 @@ log = get_logger(__name__)
 DESCRIPTION = """
 Multi-tenant SaaS platform with an AI-powered product assistant.
 
-* **Workspaces** — every product lives in an isolated workspace backed by a
+* **Workspaces** - every product lives in an isolated workspace backed by a
   shared Postgres schema and a tenant-scoped repository layer.
-* **Auth** — JWT access/refresh tokens with role-based authorization
+* **Auth** - JWT access/refresh tokens with role-based authorization
   (`viewer` < `member` < `admin` < `owner`).
-* **Assistant** — a LangChain RAG pipeline that answers questions from the
+* **Assistant** - a LangChain RAG pipeline that answers questions from the
   workspace's own product documentation, with citations.
 """
 

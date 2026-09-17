@@ -144,7 +144,7 @@ def viewer(db: Session, owner: Actor) -> Actor:
 
 @pytest.fixture
 def other_owner(db: Session) -> Actor:
-    """An owner of a completely separate workspace — used for isolation tests."""
+    """An owner of a completely separate workspace - used for isolation tests."""
     user = auth_service.create_user(
         db, email="rival@globex.io", password="RivalPassw0rd", full_name="Rival"
     )

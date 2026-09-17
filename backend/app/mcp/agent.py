@@ -43,32 +43,38 @@ async def execute_mcp_query(
     server_params = get_server_parameters()
 
     print("\n" + "=" * 70)
-    print("🤖  STARTING SELF-RAG MCP AGENT")
+    print("Starting Self-RAG MCP Agent")
     print("=" * 70)
     print(f"Connecting to MCP Server subprocess in: {BACKEND_DIR} ...")
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            # 1. Initialize MCP Session handshake
-            init_res = await session.initialize()
-            print(f" Connected! MCP Server Name: {init_res.serverInfo.name} (v{init_res.serverInfo.version})")
+    async with (
+        stdio_client(server_params) as (read, write),
+        ClientSession(read, write) as session,
+    ):
+        # 1. Initialize MCP Session handshake
+        init_res = await session.initialize()
+        srv_info = init_res.serverInfo
+        print(f"Connected! MCP Server: {srv_info.name} (v{srv_info.version})")
 
-            # 2. Dynamic Tool Discovery
-            tools_response = await session.list_tools()
-            available_tools = tools_response.tools
-            print(f"\n Discovered {len(available_tools)} MCP Tools:")
-            for t in available_tools:
-                print(f"   • {t.name}: {t.description.strip().splitlines()[0]}")
+        # 2. Dynamic Tool Discovery
+        tools_response = await session.list_tools()
+        available_tools = tools_response.tools
+        print(f"\nDiscovered {len(available_tools)} MCP Tools:")
+        for t in available_tools:
+            first_line = t.description.strip().splitlines()[0]
+            print(f"   - {t.name}: {first_line}")
 
-            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
-            # 3. Autonomous Reasoning Loop
-            if use_llm and anthropic_api_key:
-                await _run_anthropic_agent_loop(session, available_tools, question, tenant_id, anthropic_api_key)
-            else:
-                if use_llm and not anthropic_api_key:
-                    print("\n⚠️  No ANTHROPIC_API_KEY detected. Running in deterministic Agent Demonstration Mode.")
-                await _run_deterministic_agent_loop(session, question, tenant_id)
+        # 3. Autonomous Reasoning Loop
+        if use_llm and anthropic_api_key:
+            await _run_anthropic_agent_loop(
+                session, available_tools, question, tenant_id, anthropic_api_key
+            )
+        else:
+            if use_llm and not anthropic_api_key:
+                print("\nNo ANTHROPIC_API_KEY detected. Running in demonstration mode.")
+            await _run_deterministic_agent_loop(session, question, tenant_id)
 
 
 async def _run_deterministic_agent_loop(
@@ -78,7 +84,7 @@ async def _run_deterministic_agent_loop(
 ) -> None:
     """Deterministic agent flow for offline testing or verifying MCP protocol."""
     print("\n" + "-" * 70)
-    print("🧠 AGENT STEP 1: Discovering active workspaces via MCP tool 'list_workspaces'...")
+    print("Agent Step 1: Discovering active workspaces via 'list_workspaces'...")
     print("-" * 70)
 
     workspaces_res = await session.call_tool("list_workspaces", {})
@@ -92,15 +98,15 @@ async def _run_deterministic_agent_loop(
                 (w["name"] for w in workspaces if w["id"] == selected_tenant),
                 workspaces[0]["name"],
             )
-            print(f" Found {len(workspaces)} workspace(s). Selected: '{selected_name}' ({selected_tenant})")
+            print(f"Found {len(workspaces)} workspace(s). Selected: '{selected_name}'")
         else:
             selected_tenant = tenant_id
-            print(" No workspaces found in database yet. Proceeding with default tenant.")
+            print("No workspaces found in database. Proceeding with default tenant.")
     except Exception:
         selected_tenant = tenant_id
 
     print("\n" + "-" * 70)
-    print("🧠 AGENT STEP 2: Invoking MCP tool 'self_rag_query'...")
+    print("Agent Step 2: Invoking MCP tool 'self_rag_query'...")
     print(f"   Question: {question}")
     print(f"   Target Workspace: {selected_tenant or 'auto-resolve'}")
     print("-" * 70)
@@ -116,13 +122,13 @@ async def _run_deterministic_agent_loop(
         data = json.loads(content_text)
         if "error" in data:
             print("\n" + "=" * 70)
-            print(f"⚠️  MCP TOOL NOTICE [{data.get('error')}]")
+            print(f"MCP Tool Notice [{data.get('error')}]:")
             print("=" * 70)
             print(f"Message: {data.get('message')}")
             return
 
         print("\n" + "=" * 70)
-        print("🎯 FINAL AGENT SYNTHESIS (Grounded via Self-RAG MCP)")
+        print("Final Agent Response (Self-RAG MCP)")
         print("=" * 70)
         print(f"Workspace   : {data.get('workspace_name')} ({data.get('workspace_id')})")
         print(f"Source Type : {data.get('source_type')} (used_context={data.get('used_context')})")
@@ -176,7 +182,7 @@ async def _run_anthropic_agent_loop(
         messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
 
         print("\n" + "-" * 70)
-        print("🧠 AGENT REASONING: Planning tool invocation with SyncAnthropic (Claude)...")
+        print("Agent Reasoning: Invoking tool via Anthropic Claude...")
         print("-" * 70)
 
         response = client.messages.create(
@@ -194,7 +200,7 @@ async def _run_anthropic_agent_loop(
             for tool_use in tool_uses:
                 fn_name = tool_use.name
                 fn_args = tool_use.input or {}
-                print(f" Agent invoking MCP tool: '{fn_name}' with args: {fn_args}")
+                print(f"Agent invoking MCP tool: '{fn_name}' with args: {fn_args}")
 
                 mcp_res = await session.call_tool(fn_name, fn_args)
                 tool_output = mcp_res.content[0].text
@@ -216,18 +222,18 @@ async def _run_anthropic_agent_loop(
             )
             final_text = "".join(b.text for b in final_res.content if hasattr(b, "text"))
             print("\n" + "=" * 70)
-            print("🎯 FINAL AGENT SYNTHESIS (Anthropic Claude)")
+            print("Final Agent Response (Anthropic Claude)")
             print("=" * 70)
             print(final_text)
         else:
             final_text = "".join(b.text for b in response.content if hasattr(b, "text"))
             print("\n" + "=" * 70)
-            print("🎯 AGENT RESPONSE (Direct Claude)")
+            print("Final Agent Response (Direct Claude)")
             print("=" * 70)
             print(final_text)
 
     except Exception as exc:
-        print(f"⚠️  Anthropic execution error: {exc}. Falling back to deterministic mode.")
+        print(f"Anthropic execution error: {exc}. Falling back to deterministic mode.")
         await _run_deterministic_agent_loop(session, question, tenant_id)
 
 

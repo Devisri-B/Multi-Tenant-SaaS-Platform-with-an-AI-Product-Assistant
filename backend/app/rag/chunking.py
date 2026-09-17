@@ -1,15 +1,4 @@
-"""Splitting documentation into retrievable chunks with token-based measurement.
-
-Anthropic models measure context and prompt lengths in tokens. Unlike OpenAI,
-which requires the external `tiktoken` library, Anthropic provides native token
-counting via its messages API (`client.messages.count_tokens`).
-
-In `RecursiveCharacterTextSplitter`, `length_function` is configured with `count_tokens`:
-- When an Anthropic client is active with valid credentials, exact token counts
-  can be retrieved and cached via LRU.
-- When running offline, in test suites, or when the API is unreachable, fast local
-  subword tokenization counts tokens without any dependency on `tiktoken` or OpenAI SDK.
-"""
+"""Documentation chunking with token-based length measurement."""
 
 from __future__ import annotations
 
@@ -29,13 +18,12 @@ class Chunk:
     metadata: dict
 
 
-# Fast subword / token pattern matching words and punctuation tokens
 _TOKEN_PATTERN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 _anthropic_client: Any = None
 
 
 def set_anthropic_client(client: Any) -> None:
-    """Set or override the Anthropic client for token counting (e.g. in tests)."""
+    """Set or override the Anthropic client for token counting (used in tests)."""
     global _anthropic_client
     _anthropic_client = client
     count_tokens.cache_clear()
@@ -58,12 +46,7 @@ def _get_anthropic_client() -> Any:
 
 
 def _count_local_tokens(text: str) -> int:
-    """Fast local subword token counter without tiktoken.
-
-    Splits text on alphanumeric words and punctuation symbols, providing a fast,
-    accurate approximation of BPE tokens (as used by Claude) without requiring
-    tiktoken, network calls, or C extensions.
-    """
+    """Local subword token counter for offline environments."""
     if not text:
         return 0
     tokens = _TOKEN_PATTERN.findall(text)
@@ -74,8 +57,8 @@ def _count_local_tokens(text: str) -> int:
 def count_tokens(text: str) -> int:
     """Token-based length function for RecursiveCharacterTextSplitter.
 
-    Uses Anthropic native token counting when available, or local
-    subword tokenization without requiring OpenAI's tiktoken.
+    Queries Anthropic count_tokens API when configured, falling back to local
+    subword tokenization in test/offline environments.
     """
     normalised = text.strip()
     if not normalised:

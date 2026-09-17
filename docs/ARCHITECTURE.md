@@ -36,15 +36,15 @@ tenant, so the same document can exist in two workspaces but not twice in one.
 
 ```
 HTTP request
-  → SecurityHeadersMiddleware      conservative response headers
-  → RequestContextMiddleware       request id, structlog binding, latency
-  → CORSMiddleware
-  → route
-      → get_current_user           decode JWT, load user, check active
-      → get_tenant_context         resolve workspace, check membership
-      → require_role(minimum)      compare against the role lattice
-      → handler                    services + tenant-scoped repositories
-  → AppError handler               domain error → {code, message} + status
+  -> SecurityHeadersMiddleware      conservative response headers
+  -> RequestContextMiddleware       request id, structlog binding, latency
+  -> CORSMiddleware
+  -> route
+      -> get_current_user           decode JWT, load user, check active
+      -> get_tenant_context         resolve workspace, check membership
+      -> require_role(minimum)      compare against the role lattice
+      -> handler                    services + tenant-scoped repositories
+  -> AppError handler               domain error -> {code, message} + status
 ```
 
 `AppError` subclasses carry both an HTTP status and a stable machine-readable
@@ -77,11 +77,11 @@ Guardrails beyond the lattice, all tested:
 ## Data model
 
 ```
-Tenant 1───* Membership *───1 User
-  │
-  ├──* Document 1───* DocumentChunk   (embedding vector)
-  ├──* Conversation 1───* Message     (citations JSON)
-  └──* AuditLog
+Tenant 1---* Membership *---1 User
+  |
+  +--* Document 1---* DocumentChunk   (embedding vector)
+  +--* Conversation 1---* Message     (citations JSON)
+  \--* AuditLog
 ```
 
 `AuditLog` is append-only and records privileged actions (invites, role
@@ -91,6 +91,6 @@ changes, archives, assistant queries) with the acting user and workspace.
 
 `GUID`, `JSONType` and `Vector` are `TypeDecorator`s that bind to native
 Postgres types (`uuid`, `jsonb`, `vector`) and degrade to `CHAR(32)`, `JSON`
-and a JSON array on SQLite. This is what lets the full test-suite — including
-the RAG pipeline — run in-memory in CI with no services, while production uses
+and a JSON array on SQLite. This is what lets the full test-suite - including
+the RAG pipeline - run in-memory in CI with no services, while production uses
 real pgvector with an `ivfflat` cosine index.

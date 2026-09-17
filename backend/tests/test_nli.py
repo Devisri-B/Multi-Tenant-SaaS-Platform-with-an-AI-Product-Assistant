@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.core.config import settings
 from app.rag.graph import grade_hallucination_node
 from app.rag.nli import (

@@ -51,7 +51,7 @@ export function MembersPage() {
       <Banner tone="error">{error ?? invite.error ?? changeRole.error ?? remove.error}</Banner>
       {temporaryPassword ? (
         <Banner tone="success" onDismiss={() => setTemporaryPassword(null)}>
-          Temporary password for the new account: <code>{temporaryPassword}</code> — share it
+          Temporary password for the new account: <code>{temporaryPassword}</code> - share it
           securely, they should change it on first sign-in.
         </Banner>
       ) : null}

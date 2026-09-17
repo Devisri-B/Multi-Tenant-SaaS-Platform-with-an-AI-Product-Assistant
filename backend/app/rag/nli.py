@@ -1,7 +1,7 @@
-"""Local NLI (Natural Language Inference) entailment scoring for hallucination verification.
+"""Natural Language Inference (NLI) entailment scoring for hallucination verification.
 
 Uses local DeBERTa-v3 cross-encoder models to verify whether generated candidate
-answers are factually entailed by retrieved context passages with zero API cost.
+answers are factually entailed by retrieved context passages.
 """
 
 from __future__ import annotations
@@ -124,7 +124,8 @@ class DebertaNLIProvider(NLIProvider):
                 self._label_map = {"contradiction": 0, "entailment": 1, "neutral": 2}
 
         except Exception as exc:
-            raise ProviderError(f"Failed to load DeBERTa NLI model '{self.model_name}': {exc}") from exc
+            msg = f"Failed to load DeBERTa NLI model '{self.model_name}': {exc}"
+            raise ProviderError(msg) from exc
 
     def check_groundedness(
         self,

@@ -64,14 +64,14 @@ export function Banner({
       <span>{children}</span>
       {onDismiss ? (
         <button className="banner__close" onClick={onDismiss} aria-label="Dismiss">
-          ×
+          x
         </button>
       ) : null}
     </div>
   )
 }
 
-export function Spinner({ label = 'Loading…' }: { label?: string }) {
+export function Spinner({ label = 'Loading...' }: { label?: string }) {
   return (
     <div className="loading" role="status">
       <span className="spinner spinner--dark" aria-hidden />

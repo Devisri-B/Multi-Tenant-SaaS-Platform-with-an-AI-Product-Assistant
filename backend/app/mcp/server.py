@@ -13,7 +13,6 @@ import json
 import logging
 import sys
 import uuid
-from typing import Any
 
 # Re-route all root loggers and structlog to sys.stderr so stdout remains 100% clean for JSON-RPC
 logging.getLogger().handlers.clear()
@@ -25,18 +24,19 @@ logging.basicConfig(
 
 try:
     import structlog
+
     structlog.configure(
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
     )
 except Exception:
     pass
 
-from mcp.server.fastmcp import FastMCP
-from sqlalchemy.orm import Session
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
-from app.db.session import session_scope
-from app.models.tenant import Tenant
-from app.rag import chain as rag_chain
+from app.db.session import session_scope  # noqa: E402
+from app.models.tenant import Tenant  # noqa: E402
+from app.rag import chain as rag_chain  # noqa: E402
 
 logger = logging.getLogger("app.mcp.server")
 
@@ -46,7 +46,7 @@ mcp = FastMCP(
     instructions=(
         "You are connected to a multi-tenant Self-RAG Knowledge Server. "
         "Use 'list_workspaces' to discover available tenant workspaces. "
-        "Use 'self_rag_query' to ask grounded questions with strict anti-hallucination verification. "
+        "Use 'self_rag_query' to ask grounded questions with anti-hallucination verification. "
         "Use 'semantic_search_chunks' for raw semantic vector retrieval."
     ),
 )

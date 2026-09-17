@@ -1,4 +1,4 @@
-"""Tenant (workspace) — the isolation boundary for every other resource."""
+"""Tenant (workspace) - the isolation boundary for every other resource."""
 
 from __future__ import annotations
 

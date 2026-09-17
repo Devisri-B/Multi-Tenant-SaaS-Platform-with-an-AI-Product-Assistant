@@ -81,7 +81,7 @@ export function AssistantPage() {
       <div className="chat-layout">
         <aside className="chat-history">
           <h2 className="chat-history__title">Recent</h2>
-          {history.loading ? <Spinner label="Loading…" /> : null}
+          {history.loading ? <Spinner label="Loading..." /> : null}
           {history.data?.items.length === 0 ? <p className="muted">No conversations yet.</p> : null}
           <ul className="chat-history__list">
             {history.data?.items.map((conversation) => (
@@ -104,7 +104,7 @@ export function AssistantPage() {
             {messages.length === 0 ? (
               <EmptyState
                 title="Ask about your product"
-                hint="For example: “How do refunds work?” or “What are the seat limits on the free plan?”"
+                hint='For example: "How do refunds work?" or "What are the seat limits on the free plan?"'
               />
             ) : null}
 
@@ -126,7 +126,7 @@ export function AssistantPage() {
                             rel="noopener noreferrer"
                             className="citation__title citation__link"
                           >
-                            {citation.document_title} ↗
+                            {citation.document_title}
                           </a>
                         ) : (
                           <span className="citation__title">{citation.document_title}</span>
@@ -144,7 +144,7 @@ export function AssistantPage() {
               </article>
             ))}
 
-            {ask.pending ? <Spinner label="Finding answers from docs & online search…" /> : null}
+            {ask.pending ? <Spinner label="Finding answers from docs & online search..." /> : null}
             <div ref={transcriptEnd} />
           </div>
 
@@ -152,7 +152,7 @@ export function AssistantPage() {
             <input
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Ask a question about your product…"
+              placeholder="Ask a question about your product..."
               minLength={3}
               required
             />

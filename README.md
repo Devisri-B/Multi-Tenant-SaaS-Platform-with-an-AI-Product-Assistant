@@ -1,13 +1,13 @@
-# Nimbus — Multi-Tenant SaaS Platform with an Adaptive AI Assistant
+# Nimbus - Multi-Tenant SaaS Platform with an Adaptive AI Assistant
 
 A production-grade SaaS platform featuring isolated customer workspaces served
 from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
 powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
 
-**Stack** — Python · FastAPI · LangGraph · Anthropic Claude (SyncAnthropic) · FastMCP · SentenceTransformers · PostgreSQL (`pgvector`) · SQLAlchemy 2.0 · Alembic · React 18 · TypeScript · Vite · Docker · GitHub Actions
+**Stack** - Python | FastAPI | LangGraph | Anthropic Claude (SyncAnthropic) | FastMCP | SentenceTransformers | PostgreSQL (`pgvector`) | SQLAlchemy 2.0 | Alembic | React 18 | TypeScript | Vite | Docker | GitHub Actions
 
-> 🚀 **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
-> 🔑 **Seeded Demo Account**: Email: `owner@nimbus.dev` · Password: `DemoPassw0rd`
+> **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
+> **Seeded Demo Account**: Email: `owner@nimbus.dev` | Password: `DemoPassw0rd`
 
 ---
 
@@ -17,23 +17,23 @@ powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/
 flowchart TB
     subgraph Clients ["1. Client & Host Layer"]
         direction LR
-        SPA["React 18 SPA<br/>(Vite · TS · Theme Switcher)"]
+        SPA["React 18 SPA<br/>(Vite / TS / Theme Switcher)"]
         IDE["Claude Desktop / Cursor<br/>(External AI Host)"]
         AgentCLI["Autonomous MCP Agent<br/>(Local Reasoning CLI)"]
     end
 
     subgraph Gateway ["2. FastAPI Gateway & Control Plane"]
         direction TB
-        MW["Middleware Pipeline<br/>(Security Headers · Request Context · CORS)"]
-        AuthTenancy["Auth & Tenancy Guard<br/>(JWT Bearer · Tenant Context · RBAC Lattice)"]
-        REST["REST API Endpoints<br/>(/workspaces · /documents · /assistant)"]
-        FastMCP["FastMCP Server (JSON-RPC)<br/>(list_workspaces · semantic_search · self_rag_query)"]
+        MW["Middleware Pipeline<br/>(Security Headers / Request Context / CORS)"]
+        AuthTenancy["Auth & Tenancy Guard<br/>(JWT Bearer / Tenant Context / RBAC Lattice)"]
+        REST["REST API Endpoints<br/>(/workspaces /documents /assistant)"]
+        FastMCP["FastMCP Server (JSON-RPC)<br/>(list_workspaces / semantic_search / self_rag_query)"]
     end
 
     subgraph DataPlane ["3. Multi-Tenant Storage Layer (PostgreSQL 16)"]
         direction TB
         Repo["TenantScopedRepository<br/>(Mandatory WHERE tenant_id = :id)"]
-        RelationalDB[("Relational Data<br/>Tenants · Users · Memberships<br/>Conversations · AuditLogs")]
+        RelationalDB[("Relational Data<br/>Tenants / Users / Memberships<br/>Conversations / AuditLogs")]
         PGVectorDB[("Vector Storage (pgvector)<br/>Document Chunks (384-dim)<br/>ivfflat Cosine Index")]
     end
 
@@ -85,7 +85,7 @@ flowchart TB
 The assistant uses an adaptive **LangGraph state graph** with **sliding window conversational memory**, **Self-RAG hallucination reduction**, and **dynamic online search fallback**:
 - **Sliding Window Conversation Memory**: Preserves context across multi-turn dialogues with automated conversational query reformulation and pronoun coreference resolution.
 - **Multi-Tenant Vector Search**: Answers grounded in tenant-isolated documentation chunks with similarity scores and excerpts.
-- **Local NLI Hallucination Verification (DeBERTa-v3)**: Evaluates candidate answers against retrieved context passages using local cross-encoder Natural Language Inference scoring for zero API cost (~20–40ms latency on CPU), calculating calibrated entailment probabilities and triggering strict regeneration loops when unsupported claims are detected.
+- **Local NLI Hallucination Verification (DeBERTa-v3)**: Evaluates candidate answers against retrieved context passages using local cross-encoder Natural Language Inference scoring on CPU (~20-40ms latency), calculating calibrated entailment probabilities and triggering strict regeneration loops when unsupported claims are detected.
 - **Dynamic Online Routing**: If workspace documents lack context or fail to resolve the query, the graph routes to online web search (DuckDuckGo / Tavily) to synthesize verified answers with external web citations.
 
 | Grounded Workspace Document Citations | Dynamic Online Search Fallback (Out-of-Scope) |
@@ -180,13 +180,11 @@ Connect Claude Desktop or Cursor directly to your private tenant knowledge base 
 }
 ```
 
-Detailed documentation and examples are in [`backend/app/mcp/README.md`](backend/app/mcp/README.md).
-
 ---
 
 ## Document Ingestion, Chunk Inspection & Live Editor
 
-Uploads are chunked, embedded and indexed on arrival (`pending → processing → indexed`). Users can inspect individual vector chunks, view full source text, and live-edit documentation with automatic re-indexing.
+Uploads are chunked, embedded and indexed on arrival (`pending -> processing -> indexed`). Users can inspect individual vector chunks, view full source text, and live-edit documentation with automatic re-indexing.
 
 ![The documentation page listing indexed documents with chunk counts and sizes](docs/screenshots/documentation.png)
 
@@ -200,7 +198,7 @@ Uploads are chunked, embedded and indexed on arrival (`pending → processing �
 
 ## Workspace Overview
 
-Usage counters for the selected tenant — members, documents, how many are indexed, chunks embedded, and conversations held.
+Usage counters for the selected tenant: members, documents, how many are indexed, chunks embedded, and conversations held.
 
 ![Workspace overview showing member, document, chunk and conversation counts](docs/screenshots/overview.png)
 
@@ -224,20 +222,20 @@ predicate, all reads and writes go through `TenantScopedRepository`
 (`backend/app/services/base.py`), which applies `WHERE tenant_id = :tenant_id`
 and refuses to persist or delete a row belonging to another tenant. Retrieval
 is filtered the same way inside SQL, so the assistant physically cannot quote
-another workspace's documents — `tests/test_assistant.py` asserts exactly that.
+another workspace's documents - `tests/test_assistant.py` asserts exactly that.
 
-**Authorization as a dependency chain.** `bearer token → current_user →
-tenant_context → require_role(...)`. A handler never sees a tenant id from the
+**Authorization as a dependency chain.** `bearer token -> current_user ->
+tenant_context -> require_role(...)`. A handler never sees a tenant id from the
 client that has not already been checked against the caller's memberships.
 Requesting a workspace you are not a member of returns `403`, not `404`, and a
-non-existent workspace returns `404` — the split is deliberate and tested.
+non-existent workspace returns `404` - the split is deliberate and tested.
 
 **Provider seam for LLM & Embeddings.** `app/rag/providers.py` defines
 `EmbeddingProvider` and `ChatProvider`. Production binds Chat to Anthropic Claude
 (via `SyncAnthropic`) and Embeddings to local `SentenceTransformers`
 (`all-MiniLM-L6-v2`); `LLM_PROVIDER=fake` binds them to a deterministic hashed
-bag-of-words embedder and an extractive generator. The whole pipeline —
-chunking, embedding, retrieval, prompt assembly, citation building — runs
+bag-of-words embedder and an extractive generator. The whole pipeline
+(chunking, embedding, retrieval, prompt assembly, citation building) runs
 identically in CI with zero external API keys and zero cost.
 
 **Portable column types.** `Vector` is a real `pgvector` column on Postgres and
@@ -315,9 +313,9 @@ frontend/
 
 | Method | Path | Minimum role |
 | --- | --- | --- |
-| `POST` | `/api/v1/auth/register` | — |
-| `POST` | `/api/v1/auth/login` | — |
-| `POST` | `/api/v1/auth/refresh` | — |
+| `POST` | `/api/v1/auth/register` | - |
+| `POST` | `/api/v1/auth/login` | - |
+| `POST` | `/api/v1/auth/refresh` | - |
 | `GET` | `/api/v1/auth/me` | authenticated |
 | `POST` | `/api/v1/auth/password` | authenticated |
 | `GET` `POST` | `/api/v1/workspaces` | authenticated |
@@ -351,16 +349,16 @@ See `.env.example` for the full list. The ones that matter most:
 | `SECRET_KEY` | dev placeholder | **Must** be replaced in production |
 | `DATABASE_URL` | assembled from `POSTGRES_*` | Overrides the parts |
 | `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic) or `fake` |
-| `ANTHROPIC_API_KEY` | — | Required when `LLM_PROVIDER=anthropic` |
+| `ANTHROPIC_API_KEY` | - | Required when `LLM_PROVIDER=anthropic` |
 | `ANTHROPIC_CHAT_MODEL` | `claude-3-5-haiku-20241022` | Anthropic Claude model checkpoint |
-| `EMBEDDING_PROVIDER` | `sentence_transformers` | `sentence_transformers` (zero API cost) or `fake` |
+| `EMBEDDING_PROVIDER` | `sentence_transformers` | `sentence_transformers` (local embeddings) or `fake` |
 | `SENTENCE_TRANSFORMER_MODEL` | `all-MiniLM-L6-v2` | Local Hugging Face sentence embedding model |
 | `EMBEDDING_DIMENSIONS` | `384` | Embedding vector width |
-| `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (zero-API-cost local NLI), `llm`, or `fake` |
+| `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (local DeBERTa-v3 cross-encoder), `llm`, or `fake` |
 | `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |
 | `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |
-| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `250` / `40` | Tokens (Anthropic token-based chunking without `tiktoken`) |
+| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `250` / `40` | Tokens (token-based via `count_tokens`) |
 | `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.40` | Retrieval budget and tuned cosine similarity floor |
 
-Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
+Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 [`docs/RAG.md`](docs/RAG.md).

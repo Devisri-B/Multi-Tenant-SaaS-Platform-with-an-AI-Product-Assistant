@@ -120,7 +120,7 @@ export function DocumentsPage() {
                   rows={8}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
-                  placeholder="# Heading&#10;&#10;Paste Markdown here…"
+                  placeholder="# Heading&#10;&#10;Paste Markdown here..."
                   required
                 />
               </label>
@@ -141,7 +141,7 @@ export function DocumentsPage() {
                 if (file) void upload.run(file)
               }}
             />
-            {upload.pending ? <Spinner label="Indexing…" /> : null}
+            {upload.pending ? <Spinner label="Indexing..." /> : null}
           </Card>
         </div>
       ) : null}
@@ -382,7 +382,7 @@ export function DocumentsPage() {
 
       {modalLoading ? (
         <div className="modal-overlay">
-          <Spinner label="Loading document details…" />
+          <Spinner label="Loading document details..." />
         </div>
       ) : null}
     </div>

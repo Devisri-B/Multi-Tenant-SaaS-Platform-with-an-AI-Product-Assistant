@@ -2,7 +2,7 @@
 
 Every query for tenant-owned data goes through :class:`TenantScopedRepository`.
 Centralising the ``WHERE tenant_id = :tenant_id`` predicate here means a route
-cannot accidentally read across the isolation boundary — there is no code path
+cannot accidentally read across the isolation boundary - there is no code path
 to a tenant table that does not pass through ``_scoped``.
 """
 

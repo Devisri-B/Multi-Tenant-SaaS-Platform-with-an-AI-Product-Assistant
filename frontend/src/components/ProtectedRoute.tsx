@@ -17,7 +17,7 @@ export function ProtectedRoute({
   const { user, loading, activeRole } = useAuth()
   const location = useLocation()
 
-  if (loading) return <Spinner label="Checking your session…" />
+  if (loading) return <Spinner label="Checking your session..." />
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />
 
   if (minimumRole && !roleAtLeast(activeRole ?? undefined, minimumRole)) {
