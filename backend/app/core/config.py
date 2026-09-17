@@ -55,8 +55,8 @@ class Settings(BaseSettings):
     RAG_CHUNK_SIZE: int = 250
     RAG_CHUNK_OVERLAP: int = 40
     RAG_TOP_K: int = 5
-    RAG_MIN_SCORE: float = 0.15
-    DOCUMENT_RELEVANCE_THRESHOLD: float = 0.25
+    RAG_MIN_SCORE: float = 0.40
+    DOCUMENT_RELEVANCE_THRESHOLD: float = 0.40
 
     # -- Online Web Search --------------------------------------------------
     WEB_SEARCH_ENABLED: bool = True

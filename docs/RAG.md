@@ -66,7 +66,7 @@ backed by `CREATE INDEX ... USING ivfflat (embedding vector_cosine_ops)`.
 On SQLite the same signature is served by an in-Python cosine scan. Either way
 the tenant predicate is inside the query.
 
-Hits below `RAG_MIN_SCORE` (default 0.15 cosine similarity) are discarded. If
+Hits below `RAG_MIN_SCORE` (default 0.40 cosine similarity, tuned for `all-MiniLM-L6-v2`) are discarded. If
 nothing survives, the chain returns a fixed "not in your documentation" answer
 without calling the LLM at all — cheaper, and it removes the main opportunity
 to hallucinate.

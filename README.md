@@ -360,7 +360,7 @@ See `.env.example` for the full list. The ones that matter most:
 | `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |
 | `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |
 | `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `250` / `40` | Tokens (Anthropic token-based chunking without `tiktoken`) |
-| `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.15` | Retrieval budget and floor |
+| `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.40` | Retrieval budget and tuned cosine similarity floor |
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 [`docs/RAG.md`](docs/RAG.md).
