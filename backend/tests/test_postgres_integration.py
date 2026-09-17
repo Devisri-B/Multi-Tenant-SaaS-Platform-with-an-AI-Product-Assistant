@@ -54,7 +54,12 @@ def pg_session() -> Iterator[Session]:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        try:
+            with engine.begin() as connection:
+                for table in reversed(Base.metadata.sorted_tables):
+                    connection.execute(table.delete())
+        except Exception:
+            pass
         engine.dispose()
 
 

@@ -45,9 +45,12 @@ def _create_schema() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _clean_tables() -> Iterator[None]:
     yield
-    with engine.begin() as connection:
-        for table in reversed(Base.metadata.sorted_tables):
-            connection.execute(table.delete())
+    try:
+        with engine.begin() as connection:
+            for table in reversed(Base.metadata.sorted_tables):
+                connection.execute(table.delete())
+    except Exception:
+        pass
 
 
 @pytest.fixture

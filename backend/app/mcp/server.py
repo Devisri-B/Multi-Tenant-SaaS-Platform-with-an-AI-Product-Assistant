@@ -123,7 +123,7 @@ def list_workspaces() -> str:
 
 @mcp.tool(structured_output=False)
 def semantic_search_chunks(
-    query: str, tenant_id: str | None = None, top_k: int = 5
+    query: str, tenant_id: str = "", top_k: int = 5
 ) -> str:
     """Retrieve raw document chunks matching a query via semantic vector search in pgvector.
 
@@ -134,7 +134,8 @@ def semantic_search_chunks(
     """
     try:
         with session_scope() as db:
-            tenant = _resolve_tenant(db, tenant_id)
+            target_tenant = tenant_id if tenant_id else None
+            tenant = _resolve_tenant(db, target_tenant)
             if not tenant:
                 return json.dumps(
                     {
@@ -185,7 +186,7 @@ def semantic_search_chunks(
 @mcp.tool(structured_output=False)
 def self_rag_query(
     question: str,
-    tenant_id: str | None = None,
+    tenant_id: str = "",
     allow_web_search: bool = True,
     top_k: int = 5,
 ) -> str:
@@ -203,7 +204,8 @@ def self_rag_query(
     """
     try:
         with session_scope() as db:
-            tenant = _resolve_tenant(db, tenant_id)
+            target_tenant = tenant_id if tenant_id else None
+            tenant = _resolve_tenant(db, target_tenant)
             if not tenant:
                 return json.dumps(
                     {
