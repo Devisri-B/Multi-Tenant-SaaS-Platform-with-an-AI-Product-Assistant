@@ -85,7 +85,7 @@ flowchart TB
 The assistant uses an adaptive **LangGraph state graph** with **sliding window conversational memory**, **Self-RAG hallucination reduction**, and **dynamic online search fallback**:
 - **Sliding Window Conversation Memory**: Preserves context across multi-turn dialogues with automated conversational query reformulation and pronoun coreference resolution.
 - **Multi-Tenant Vector Search**: Answers grounded in tenant-isolated documentation chunks with similarity scores and excerpts.
-- **Self-RAG Hallucination Reductors**: Binary factual consistency evaluators assess candidate generations, triggering strict regeneration loops if unsupported claims are detected.
+- **Local NLI Hallucination Verification (DeBERTa-v3)**: Evaluates candidate answers against retrieved context passages using local cross-encoder Natural Language Inference scoring for zero API cost (~20–40ms latency on CPU), calculating calibrated entailment probabilities and triggering strict regeneration loops when unsupported claims are detected.
 - **Dynamic Online Routing**: If workspace documents lack context or fail to resolve the query, the graph routes to online web search (DuckDuckGo / Tavily) to synthesize verified answers with external web citations.
 
 | Grounded Workspace Document Citations | Dynamic Online Search Fallback (Out-of-Scope) |
@@ -277,7 +277,7 @@ Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
 ### Tests
 
 ```bash
-make test         # 143 tests, SQLite in-memory, no external services
+make test         # 151 tests, SQLite in-memory, no external services
 make lint
 ```
 
@@ -295,10 +295,10 @@ backend/
     schemas/      Pydantic request/response contracts
     api/          dependencies (auth, tenancy, RBAC), middleware, v1 routers
     services/     tenant-scoped repositories and domain logic
-    rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain
+    rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain, DeBERTa NLI
     mcp/          FastMCP server (stdio), autonomous tool-calling client agent
   alembic/        three migrations, including the pgvector ivfflat index
-  tests/          143 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, memory and isolation
+  tests/          151 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, DeBERTa NLI, memory and isolation
 frontend/
   src/
     api/          typed fetch client with one-shot token refresh
@@ -352,6 +352,9 @@ See `.env.example` for the full list. The ones that matter most:
 | `LLM_PROVIDER` | `openai` | Set to `fake` for offline/CI |
 | `OPENAI_API_KEY` | — | Required when `LLM_PROVIDER=openai` |
 | `EMBEDDING_DIMENSIONS` | `1536` | Must match the migration's vector width |
+| `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (zero-API-cost local NLI), `llm`, or `fake` |
+| `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |
+| `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |
 | `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `900` / `150` | Characters |
 | `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.15` | Retrieval budget and floor |
 

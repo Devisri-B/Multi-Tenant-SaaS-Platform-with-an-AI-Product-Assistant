@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # -- Hallucination Reduction / Self-RAG ---------------------------------
     ENABLE_HALLUCINATION_CHECK: bool = True
     MAX_REGENERATE_RETRIES: int = 2
+    HALLUCINATION_PROVIDER: Literal["deberta", "llm", "fake"] = "deberta"
+    DEBERTA_MODEL_NAME: str = "cross-encoder/nli-deberta-v3-small"
+    NLI_ENTAILMENT_THRESHOLD: float = 0.5
+    NLI_CONTRADICTION_THRESHOLD: float = 0.3
+    NLI_DEVICE: str = "cpu"
 
     # -- Conversation Memory & Sliding Window ------------------------------
     RAG_MEMORY_WINDOW_SIZE: int = 6

@@ -109,7 +109,9 @@ class FakeChat(ChatProvider):
             facts_match = re.search(
                 r"Facts:\s*(.*?)\s*Candidate Answer:", user_prompt, flags=re.DOTALL
             )
-            ans_match = re.search(r"Candidate Answer:\s*(.*?)$", user_prompt, flags=re.DOTALL)
+            ans_match = re.search(
+                r"Candidate Answer:\s*(.*?)(?:\n\nRespond with|\Z)", user_prompt, flags=re.DOTALL
+            )
             if facts_match and ans_match:
                 f_words = set(_tokenize(facts_match.group(1)))
                 a_words = {token for token in _tokenize(ans_match.group(1)) if len(token) > 3}
@@ -280,5 +282,8 @@ def get_chat_provider() -> ChatProvider:
 
 def reset_provider_cache() -> None:
     """Drop cached providers (used by tests that flip ``LLM_PROVIDER``)."""
+    from app.rag.nli import reset_nli_cache
+
     get_embedding_provider.cache_clear()
     get_chat_provider.cache_clear()
+    reset_nli_cache()

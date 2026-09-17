@@ -42,6 +42,8 @@ class AssistantState(TypedDict, total=False):
     # Quality & Hallucination verification flags
     is_grounded: bool
     answers_question: bool
+    entailment_score: float | None
+    contradiction_score: float | None
 
     # Output
     answer: str
@@ -298,11 +300,21 @@ def regenerate_strict_node(state: AssistantState) -> dict[str, Any]:
 def grade_hallucination_node(state: AssistantState) -> dict[str, Any]:
     """Hallucination Reductor: evaluate whether candidate answer is grounded in facts."""
     if not settings.ENABLE_HALLUCINATION_CHECK:
-        return {"is_grounded": True, "answers_question": True}
+        return {
+            "is_grounded": True,
+            "answers_question": True,
+            "entailment_score": 1.0,
+            "contradiction_score": 0.0,
+        }
 
     answer = state.get("answer", "")
     if not answer or prompts.NO_CONTEXT_ANSWER in answer:
-        return {"is_grounded": False, "answers_question": False}
+        return {
+            "is_grounded": False,
+            "answers_question": False,
+            "entailment_score": 0.0,
+            "contradiction_score": 1.0,
+        }
 
     selected = state.get("documents", [])
     passages = [
@@ -311,18 +323,15 @@ def grade_hallucination_node(state: AssistantState) -> dict[str, Any]:
     ]
     context_block = prompts.build_context_block(passages)
 
-    chat = get_chat_provider()
+    # 1. Check Hallucination (Zero-API-cost NLI entailment scoring via DeBERTa-v3 or configured provider)
+    from app.rag.nli import get_nli_provider
 
-    # 1. Check Hallucination (Groundedness in context)
-    hallucination_prompt = prompts.HALLUCINATION_GRADER_PROMPT.format(
-        context=context_block, generation=answer
-    )
-    hallucination_res = chat.complete(
-        "You are an evaluator assessing factual consistency.", hallucination_prompt
-    ).strip().lower()
-    is_grounded = "yes" in hallucination_res and "no" not in hallucination_res
+    nli_provider = get_nli_provider()
+    nli_result = nli_provider.check_groundedness(context=context_block, answer=answer)
+    is_grounded = nli_result.is_grounded
 
     # 2. Check Answer Relevance (Does it resolve the question?)
+    chat = get_chat_provider()
     answer_prompt = prompts.ANSWER_GRADER_PROMPT.format(
         question=state["question"], generation=answer
     )
@@ -336,11 +345,15 @@ def grade_hallucination_node(state: AssistantState) -> dict[str, Any]:
         tenant_id=str(state["tenant_id"]),
         is_grounded=is_grounded,
         answers_question=answers_question,
+        entailment_score=nli_result.entailment_score,
+        contradiction_score=nli_result.contradiction_score,
     )
 
     return {
         "is_grounded": is_grounded,
         "answers_question": answers_question,
+        "entailment_score": nli_result.entailment_score,
+        "contradiction_score": nli_result.contradiction_score,
     }
 
 
