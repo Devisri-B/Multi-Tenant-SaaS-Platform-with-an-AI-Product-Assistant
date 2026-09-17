@@ -11,6 +11,75 @@ powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/
 
 ---
 
+## Architecture Overview
+
+```mermaid
+flowchart TB
+    subgraph Clients ["1. Client & Host Layer"]
+        direction LR
+        SPA["React 18 SPA<br/>(Vite · TS · Theme Switcher)"]
+        IDE["Claude Desktop / Cursor<br/>(External AI Host)"]
+        AgentCLI["Autonomous MCP Agent<br/>(Local Reasoning CLI)"]
+    end
+
+    subgraph Gateway ["2. FastAPI Gateway & Control Plane"]
+        direction TB
+        MW["Middleware Pipeline<br/>(Security Headers · Request Context · CORS)"]
+        AuthTenancy["Auth & Tenancy Guard<br/>(JWT Bearer · Tenant Context · RBAC Lattice)"]
+        REST["REST API Endpoints<br/>(/workspaces · /documents · /assistant)"]
+        FastMCP["FastMCP Server (JSON-RPC)<br/>(list_workspaces · semantic_search · self_rag_query)"]
+    end
+
+    subgraph DataPlane ["3. Multi-Tenant Storage Layer (PostgreSQL 16)"]
+        direction TB
+        Repo["TenantScopedRepository<br/>(Mandatory WHERE tenant_id = :id)"]
+        RelationalDB[("Relational Data<br/>Tenants · Users · Memberships<br/>Conversations · AuditLogs")]
+        PGVectorDB[("Vector Storage (pgvector)<br/>Document Chunks (1536-dim)<br/>ivfflat Cosine Index")]
+    end
+
+    subgraph RAGWorkflow ["4. Adaptive Self-RAG Engine (LangGraph)"]
+        direction TB
+        Memory["Sliding Window Memory<br/>(Coreference Reformulator)"]
+        Retriever["pgvector Retrieval<br/>(Cosine Similarity >= RAG_MIN_SCORE)"]
+        DocGrader{"Document Grader<br/>(Relevance Filter)"}
+        Generator["Contextual Generator<br/>(Grounded Workspace Answering)"]
+        HallucinationGrader{"Hallucination Reductor<br/>(Factual Consistency Check)"}
+        WebSearch["Dynamic Web Fallback<br/>(DuckDuckGo / Tavily Citations)"]
+        FinalAnswer["Verified Response + Citations"]
+    end
+
+    %% Client Connections
+    SPA -->|HTTP / REST + JWT| MW
+    IDE <-->|stdio Transport| FastMCP
+    AgentCLI <-->|stdio Transport| FastMCP
+
+    %% Gateway Pipeline
+    MW --> AuthTenancy
+    AuthTenancy --> REST
+
+    %% Gateway to Storage & RAG
+    REST --> Repo
+    FastMCP --> Repo
+    FastMCP --> RAGWorkflow
+    REST --> RAGWorkflow
+
+    Repo --> RelationalDB
+    Repo --> PGVectorDB
+
+    %% RAG Workflow Steps
+    RAGWorkflow --> PGVectorDB
+    Memory --> Retriever
+    Retriever --> DocGrader
+    DocGrader -->|Relevant Chunks| Generator
+    DocGrader -->|No Context / Out-of-Scope| WebSearch
+    Generator --> HallucinationGrader
+    HallucinationGrader -->|Grounded| FinalAnswer
+    HallucinationGrader -->|Hallucination Detected (Retry)| Generator
+    WebSearch --> FinalAnswer
+```
+
+---
+
 ## The AI Assistant: Adaptive LangGraph & Self-RAG
 
 The assistant uses an adaptive **LangGraph state graph** with **sliding window conversational memory**, **Self-RAG hallucination reduction**, and **dynamic online search fallback**:
