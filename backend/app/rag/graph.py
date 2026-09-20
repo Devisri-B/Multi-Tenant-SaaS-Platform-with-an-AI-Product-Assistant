@@ -51,6 +51,7 @@ class AssistantState(TypedDict, total=False):
     used_context: bool
     source_type: str  # "workspace_docs" | "online_search" | "none"
     latency_ms: int
+    context_text: str
 
 
 def _trim_context(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
@@ -250,6 +251,7 @@ def generate_from_docs_node(state: AssistantState) -> dict[str, Any]:
         "citations": citations,
         "used_context": True,
         "source_type": "workspace_docs",
+        "context_text": context_block,
     }
 
 
@@ -294,6 +296,7 @@ def regenerate_strict_node(state: AssistantState) -> dict[str, Any]:
         "retry_count": retry_count,
         "used_context": True,
         "source_type": "workspace_docs",
+        "context_text": context_block,
     }
 
 
@@ -402,6 +405,7 @@ def generate_from_web_node(state: AssistantState) -> dict[str, Any]:
         "citations": citations,
         "used_context": True,
         "source_type": "online_search",
+        "context_text": web_context_block,
     }
 
 
@@ -417,6 +421,7 @@ def no_context_node(state: AssistantState) -> dict[str, Any]:
         "citations": [],
         "used_context": False,
         "source_type": "none",
+        "context_text": "",
     }
 
 

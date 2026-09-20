@@ -12,6 +12,7 @@ from app.models.enums import (
     TenantPlan,
 )
 from app.models.membership import Membership
+from app.models.telemetry import TelemetryEvent
 from app.models.tenant import Tenant
 from app.models.user import User
 
@@ -27,6 +28,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "Role",
+    "TelemetryEvent",
     "Tenant",
     "TenantPlan",
     "User",

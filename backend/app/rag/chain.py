@@ -26,6 +26,7 @@ class AnswerResult:
     latency_ms: int = 0
     used_context: bool = False
     source_type: str = "workspace_docs"
+    context_text: str = ""
 
 
 def answer_question(
@@ -68,6 +69,7 @@ def answer_question(
         latency_ms=latency_ms,
         used_context=final_state.get("used_context", False),
         source_type=source_type,
+        context_text=final_state.get("context_text", ""),
     )
 
 

@@ -10,9 +10,11 @@ import type {
   Member,
   MemberInviteResult,
   Page,
+  RAGQualityMetrics,
   RegisterResponse,
   Role,
   SessionResponse,
+  TelemetryEventPayload,
   TokenPair,
   Workspace,
   WorkspaceStats,
@@ -119,4 +121,10 @@ export const assistantApi = {
     api.get<ConversationDetail>(
       `/workspaces/${tenantId}/assistant/conversations/${conversationId}`,
     ),
+
+  trackTelemetry: (tenantId: string, payload: TelemetryEventPayload) =>
+    api.post<{ id: string }>(`/workspaces/${tenantId}/assistant/telemetry`, payload),
+
+  getMetrics: (tenantId: string) =>
+    api.get<RAGQualityMetrics>(`/workspaces/${tenantId}/assistant/metrics`),
 }

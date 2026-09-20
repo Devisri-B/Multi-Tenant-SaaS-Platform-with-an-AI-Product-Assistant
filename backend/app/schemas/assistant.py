@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,18 @@ class Citation(BaseModel):
     source_type: Literal["document", "web"] = "document"
 
 
+class EvaluationSummary(BaseModel):
+    numeric_accuracy_score: float = 1.0
+    entity_accuracy_score: float = 1.0
+    citation_verification_rate: float = 1.0
+    total_numbers: int = 0
+    unsupported_numbers: list[str] = Field(default_factory=list)
+    total_entities: int = 0
+    unsupported_entities: list[str] = Field(default_factory=list)
+    total_citations: int = 0
+    verified_citations: int = 0
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     conversation_id: uuid.UUID | None = None
@@ -38,6 +50,10 @@ class AskResponse(BaseModel):
     latency_ms: int
     used_context: bool
     source_type: Literal["workspace_docs", "online_search", "none"] = "workspace_docs"
+    evaluation: EvaluationSummary | None = None
+    friction_detected: bool = False
+    friction_reason: str | None = None
+    ground_truth_score: float = 1.0
 
 
 class MessageRead(ORMModel):
@@ -70,3 +86,44 @@ class SearchHit(BaseModel):
     ordinal: int
     score: float
     content: str
+
+
+class TelemetryEventCreate(BaseModel):
+    event_type: Literal[
+        "copy",
+        "citation_click",
+        "feedback_positive",
+        "feedback_negative",
+        "friction_requery",
+    ]
+    conversation_id: uuid.UUID | None = None
+    message_id: uuid.UUID | None = None
+    event_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class TelemetryEventRead(ORMModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID | None
+    conversation_id: uuid.UUID | None
+    message_id: uuid.UUID | None
+    event_type: str
+    event_data: dict[str, Any]
+    created_at: datetime
+
+
+class RAGQualityMetrics(BaseModel):
+    total_evaluations: int
+    numeric_accuracy_avg: float
+    entity_accuracy_avg: float
+    citation_verification_rate_avg: float
+    copy_count: int
+    copy_rate: float
+    citation_clicks_count: int
+    citation_ctr: float
+    friction_requeries_count: int
+    friction_rate: float
+    successful_followups_count: int
+    positive_feedback_count: int
+    negative_feedback_count: int
+    ground_truth_score: float

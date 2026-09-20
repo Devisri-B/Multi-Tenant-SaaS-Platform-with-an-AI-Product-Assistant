@@ -113,6 +113,49 @@ export interface Citation {
   source_type?: 'document' | 'web'
 }
 
+export interface EvaluationSummary {
+  numeric_accuracy_score: number
+  entity_accuracy_score: number
+  citation_verification_rate: number
+  total_numbers: number
+  unsupported_numbers: string[]
+  total_entities: number
+  unsupported_entities: string[]
+  total_citations: number
+  verified_citations: number
+}
+
+export type TelemetryEventType =
+  | 'copy'
+  | 'citation_click'
+  | 'feedback_positive'
+  | 'feedback_negative'
+  | 'friction_requery'
+
+export interface TelemetryEventPayload {
+  event_type: TelemetryEventType
+  conversation_id?: string | null
+  message_id?: string | null
+  event_data?: Record<string, unknown>
+}
+
+export interface RAGQualityMetrics {
+  total_evaluations: number
+  numeric_accuracy_avg: number
+  entity_accuracy_avg: number
+  citation_verification_rate_avg: number
+  copy_count: number
+  copy_rate: number
+  citation_clicks_count: number
+  citation_ctr: number
+  friction_requeries_count: number
+  friction_rate: number
+  successful_followups_count: number
+  positive_feedback_count: number
+  negative_feedback_count: number
+  ground_truth_score: number
+}
+
 export interface AskResponse {
   conversation_id: string
   message_id: string
@@ -121,6 +164,10 @@ export interface AskResponse {
   latency_ms: number
   used_context: boolean
   source_type?: 'workspace_docs' | 'online_search' | 'none'
+  evaluation?: EvaluationSummary | null
+  friction_detected?: boolean
+  friction_reason?: string | null
+  ground_truth_score?: number
 }
 
 export interface ConversationSummary {
@@ -135,6 +182,10 @@ export interface ChatMessage {
   content: string
   citations: Citation[]
   created_at: string
+  evaluation?: EvaluationSummary | null
+  ground_truth_score?: number
+  copied?: boolean
+  rating?: 'positive' | 'negative' | null
 }
 
 export interface ConversationDetail extends ConversationSummary {
