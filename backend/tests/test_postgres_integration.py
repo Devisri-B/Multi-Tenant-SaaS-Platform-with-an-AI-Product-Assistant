@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 POSTGRES_URL = os.environ.get("TEST_DATABASE_URL", "")
@@ -43,24 +43,53 @@ def pg_session() -> Iterator[Session]:
     import app.models  # noqa: F401  (registers every table on the metadata)
     from app.db.base import Base
 
-    engine = create_engine(POSTGRES_URL, future=True)
-    with engine.begin() as connection:
+    admin_engine = create_engine(POSTGRES_URL, future=True)
+    with admin_engine.begin() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+        connection.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'nimbus_app') THEN
+                    CREATE ROLE nimbus_app LOGIN NOSUPERUSER NOBYPASSRLS;
+                END IF;
+            END
+            $$;
+        """))
+    Base.metadata.drop_all(bind=admin_engine)
+    Base.metadata.create_all(bind=admin_engine)
 
-    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    with admin_engine.begin() as connection:
+        connection.execute(text("""
+            GRANT ALL ON ALL TABLES IN SCHEMA public TO nimbus_app;
+            GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO nimbus_app;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO nimbus_app;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO nimbus_app;
+        """))
+    admin_engine.dispose()
+
+    test_engine = create_engine(POSTGRES_URL, future=True)
+
+    @event.listens_for(test_engine, "connect")
+    def _set_role(dbapi_connection, _record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET ROLE nimbus_app")
+        cursor.close()
+
+    session = sessionmaker(bind=test_engine, expire_on_commit=False)()
     try:
         yield session
     finally:
         session.close()
+        cleanup_engine = create_engine(POSTGRES_URL, future=True)
         try:
-            with engine.begin() as connection:
+            with cleanup_engine.begin() as connection:
                 for table in reversed(Base.metadata.sorted_tables):
                     connection.execute(table.delete())
         except Exception:
             pass
-        engine.dispose()
+        finally:
+            cleanup_engine.dispose()
+        test_engine.dispose()
 
 
 @pytest.fixture(scope="module")
@@ -180,9 +209,10 @@ def test_rls_with_check_blocks_insert_mismatch(pg_session, seeded):
         pg_session.execute(
             text(
                 "INSERT INTO documents "
-                "(id, tenant_id, title, source_name, content_type, checksum, byte_size, status) "
+                "(id, tenant_id, title, source_name, content_type, checksum, "
+                "byte_size, status, chunk_count, doc_metadata) "
                 "VALUES (:id, :tenant_id, 'Evil', 'evil.txt', 'text/plain', "
-                "'deadbeef', 10, 'indexed')"
+                "'deadbeef', 10, 'indexed', 0, '{}')"
             ),
             {"id": uuid.uuid4(), "tenant_id": theirs.id},
         )
