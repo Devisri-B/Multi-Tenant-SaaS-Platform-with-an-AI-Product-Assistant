@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AuthenticationError, PermissionDeniedError
 from app.core.security import decode_token
 from app.db.session import get_db
+from app.db.tenancy import set_tenant_context
 from app.models.enums import MembershipStatus, Role
 from app.models.membership import Membership
 from app.models.tenant import Tenant
@@ -133,6 +134,7 @@ def get_tenant_context(
         )
 
     request.state.tenant_id = str(tenant.id)
+    set_tenant_context(db, tenant.id)
     return TenantContext(tenant=tenant, membership=membership, user=user)
 
 

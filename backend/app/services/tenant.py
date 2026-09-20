@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, PermissionDeniedError
+from app.db.tenancy import set_tenant_context
 from app.models.conversation import Conversation
 from app.models.document import Document, DocumentChunk
 from app.models.enums import DocumentStatus, MembershipStatus, Role
@@ -116,6 +117,7 @@ def archive_tenant(db: Session, tenant: Tenant) -> None:
 
 
 def _scalar_count(db: Session, model, tenant_id: uuid.UUID, *extra) -> int:
+    set_tenant_context(db, tenant_id)
     stmt = (
         select(func.count())
         .select_from(model)

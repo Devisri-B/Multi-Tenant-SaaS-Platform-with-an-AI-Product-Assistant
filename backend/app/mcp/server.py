@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.db.session import session_scope  # noqa: E402
+from app.db.tenancy import set_tenant_context  # noqa: E402
 from app.models.tenant import Tenant  # noqa: E402
 from app.rag import chain as rag_chain  # noqa: E402
 
@@ -146,6 +147,7 @@ def semantic_search_chunks(
                     indent=2,
                 )
 
+            set_tenant_context(db, tenant.id)
             hits = rag_chain.semantic_search(
                 db, tenant_id=tenant.id, query=query, top_k=top_k
             )
@@ -216,6 +218,7 @@ def self_rag_query(
                     indent=2,
                 )
 
+            set_tenant_context(db, tenant.id)
             result = rag_chain.answer_question(
                 db,
                 tenant=tenant,

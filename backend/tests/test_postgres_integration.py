@@ -89,9 +89,11 @@ def seeded(pg_session: Session):
 
 def test_documents_index_on_postgres(pg_session, seeded):
     """Embeddings must round-trip through a real vector column."""
+    from app.db.tenancy import set_tenant_context
     from app.models.document import DocumentChunk
 
     mine, _ = seeded
+    set_tenant_context(pg_session, mine.id)
     chunk = (
         pg_session.query(DocumentChunk).filter(DocumentChunk.tenant_id == mine.id).first()
     )
@@ -135,3 +137,56 @@ def test_answer_question_end_to_end_on_postgres(pg_session, seeded):
     assert result.used_context is True
     assert result.citations
     assert result.citations[0]["document_title"] == "Billing"
+
+
+def test_rls_blocks_raw_sql_injection(pg_session, seeded):
+    """Even a 1=1 SQL injection cannot leak rows across tenant boundaries under RLS."""
+    from app.db.tenancy import set_tenant_context
+
+    mine, theirs = seeded
+    set_tenant_context(pg_session, mine.id)
+
+    # Simulated SQL injection bypass: WHERE title = 'anything' OR 1=1
+    injected_query = text(
+        "SELECT id, tenant_id, title FROM documents WHERE title = 'Deployment' OR 1=1"
+    )
+    rows = pg_session.execute(injected_query).fetchall()
+
+    # RLS ensures that ONLY documents belonging to `mine.id` are returned
+    assert len(rows) > 0
+    for row in rows:
+        assert str(row.tenant_id) == str(mine.id)
+        assert row.title != "Deployment"  # "Deployment" belongs to `theirs`
+
+
+def test_rls_blocks_read_without_tenant_context(pg_session, seeded):
+    """Queries executed without setting app.tenant_id return zero rows."""
+    from app.db.tenancy import reset_tenant_context
+
+    reset_tenant_context(pg_session)
+    count = pg_session.execute(text("SELECT count(*) FROM documents")).scalar_one()
+    assert count == 0
+
+
+def test_rls_with_check_blocks_insert_mismatch(pg_session, seeded):
+    """PostgreSQL WITH CHECK policy blocks inserting a row for another tenant."""
+    from app.db.tenancy import set_tenant_context
+
+    mine, theirs = seeded
+    set_tenant_context(pg_session, mine.id)
+
+    # Attempting to insert a document owned by `theirs` while scoped to `mine`
+    with pytest.raises(Exception) as exc_info:
+        pg_session.execute(
+            text(
+                "INSERT INTO documents "
+                "(id, tenant_id, title, source_name, content_type, checksum, byte_size, status) "
+                "VALUES (:id, :tenant_id, 'Evil', 'evil.txt', 'text/plain', "
+                "'deadbeef', 10, 'indexed')"
+            ),
+            {"id": uuid.uuid4(), "tenant_id": theirs.id},
+        )
+        pg_session.flush()
+
+    assert "violates row-level security policy" in str(exc_info.value).lower()
+    pg_session.rollback()

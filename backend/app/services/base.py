@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
 from app.db.base import Base
+from app.db.tenancy import set_tenant_context
 
 ModelT = TypeVar("ModelT", bound=Base)
 
@@ -26,9 +27,11 @@ class TenantScopedRepository(Generic[ModelT]):
     def __init__(self, db: Session, tenant_id: uuid.UUID) -> None:
         self.db = db
         self.tenant_id = tenant_id
+        set_tenant_context(self.db, self.tenant_id)
 
     # -- query building -----------------------------------------------------
     def _scoped(self) -> Select:
+        set_tenant_context(self.db, self.tenant_id)
         return select(self.model).where(self.model.tenant_id == self.tenant_id)
 
     # -- reads --------------------------------------------------------------
@@ -48,6 +51,7 @@ class TenantScopedRepository(Generic[ModelT]):
         return list(self.db.execute(stmt).scalars().all())
 
     def count(self) -> int:
+        set_tenant_context(self.db, self.tenant_id)
         stmt = (
             select(func.count())
             .select_from(self.model)
@@ -61,6 +65,7 @@ class TenantScopedRepository(Generic[ModelT]):
             entity.tenant_id = self.tenant_id
         if entity.tenant_id != self.tenant_id:
             raise ValueError("Refusing to persist an entity owned by another tenant.")
+        set_tenant_context(self.db, self.tenant_id)
         self.db.add(entity)
         self.db.flush()
         return entity
@@ -68,5 +73,6 @@ class TenantScopedRepository(Generic[ModelT]):
     def delete(self, entity: ModelT) -> None:
         if entity.tenant_id != self.tenant_id:
             raise ValueError("Refusing to delete an entity owned by another tenant.")
+        set_tenant_context(self.db, self.tenant_id)
         self.db.delete(entity)
         self.db.flush()

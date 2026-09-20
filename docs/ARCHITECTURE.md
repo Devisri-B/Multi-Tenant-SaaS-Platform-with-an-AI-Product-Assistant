@@ -8,26 +8,32 @@ Three isolation strategies were considered.
 | --- | --- | --- | --- |
 | Database per tenant | Strongest | High | N migrations to run |
 | Schema per tenant | Strong | Moderate | Search-path juggling |
-| **Shared schema + `tenant_id`** | Enforced in code | Near zero | One migration |
+| **Shared schema + `tenant_id` + PostgreSQL RLS** | Enforced in code + database engine | Near zero | One migration |
 
-Nimbus takes the third option. The trade-off it accepts is that isolation is a
-property of the code rather than of the storage engine, so the code has to earn
-it:
+Nimbus combines application-level isolation with database-level PostgreSQL
+Row Level Security (RLS) for defense-in-depth:
 
-1. **One choke point.** Every tenant-owned read and write goes through
+1. **One choke point in code.** Every tenant-owned read and write goes through
    `TenantScopedRepository`, which owns the `WHERE tenant_id = :tenant_id`
    predicate. `add()` and `delete()` raise if handed a row belonging to another
    tenant, so a mistake fails loudly instead of leaking.
-2. **Resolution before use.** `get_tenant_context` turns the workspace id from
+2. **Database engine RLS barrier.** On PostgreSQL, row-level security is enabled
+   and forced (`FORCE ROW LEVEL SECURITY`) across `documents`, `document_chunks`,
+   `conversations`, and `messages`. The policy:
+   `USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`
+   ensures that even if an attacker executed an arbitrary SQL injection (e.g. `OR 1=1`)
+   or bypassed application filters, the database engine guarantees rows belonging
+   to other tenants are never returned or modified.
+3. **Resolution before use.** `get_tenant_context` turns the workspace id from
    the path or the `X-Workspace-Id` header into a `TenantContext` only after
-   confirming the caller has an active membership. Handlers receive the
-   validated context, never the raw id.
-3. **Retrieval filtered in SQL.** The vector search carries the same predicate,
+   confirming the caller has an active membership, and sets the transaction-local
+   `app.tenant_id` context via `set_tenant_context(db, tenant.id)`.
+4. **Retrieval filtered in SQL.** The vector search carries the same predicate,
    so similarity ranking cannot surface a neighbouring tenant's chunk even if
    the embedding is a perfect match.
-4. **Tests that try to break it.** `test_documents.py`,
-   `test_repositories.py` and `test_assistant.py` each attempt a cross-tenant
-   read with a valid id and a valid token, and assert it fails.
+5. **Tests that try to break it.** `test_documents.py`, `test_repositories.py`,
+   `test_postgres_integration.py`, and `test_assistant.py` each attempt cross-tenant
+   reads, SQL injections, and invalid tokens to assert hard isolation.
 
 Where the database can help, it does: `(tenant_id, checksum)` is unique per
 tenant, so the same document can exist in two workspaces but not twice in one.

@@ -9,6 +9,7 @@ from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.tenancy import attach_rls_policies
 from app.db.types import GUID, JSONType
 from app.models.enums import MessageRole
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -53,3 +54,7 @@ class Message(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     citations: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+attach_rls_policies(Conversation.__table__)
+attach_rls_policies(Message.__table__)

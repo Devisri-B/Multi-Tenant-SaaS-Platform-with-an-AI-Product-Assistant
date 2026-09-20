@@ -9,6 +9,7 @@ from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.tenancy import attach_rls_policies
 from app.db.types import GUID, JSONType, Vector
 from app.models.enums import DocumentStatus
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -70,3 +71,7 @@ class DocumentChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     chunk_metadata: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+attach_rls_policies(Document.__table__)
+attach_rls_policies(DocumentChunk.__table__)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.exceptions import ProviderError, ValidationError
 from app.core.logging import get_logger
+from app.db.tenancy import set_tenant_context
 from app.models.document import Document, DocumentChunk
 from app.models.enums import DocumentStatus
 from app.rag.chunking import chunk_text
@@ -65,6 +66,7 @@ def _embed_in_batches(texts: list[str]) -> list[list[float]]:
 
 def index_document(db: Session, document: Document, text: str) -> Document:
     """Chunk, embed and persist a document. Idempotent - re-indexing replaces."""
+    set_tenant_context(db, document.tenant_id)
     document.status = DocumentStatus.PROCESSING
     document.error_message = None
     db.flush()

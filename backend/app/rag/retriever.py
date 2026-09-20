@@ -16,6 +16,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.tenancy import set_tenant_context
 from app.models.document import Document, DocumentChunk
 from app.models.enums import DocumentStatus
 
@@ -75,6 +76,7 @@ def build_pgvector_query(
 def _retrieve_pgvector(
     db: Session, tenant_id: uuid.UUID, query_embedding: list[float], top_k: int
 ) -> list[RetrievedChunk]:
+    set_tenant_context(db, tenant_id)
     stmt = build_pgvector_query(tenant_id, query_embedding, top_k)
     return [
         RetrievedChunk(
@@ -92,6 +94,7 @@ def _retrieve_pgvector(
 def _retrieve_in_python(
     db: Session, tenant_id: uuid.UUID, query_embedding: list[float], top_k: int
 ) -> list[RetrievedChunk]:
+    set_tenant_context(db, tenant_id)
     stmt = (
         select(DocumentChunk, Document.title)
         .join(Document, Document.id == DocumentChunk.document_id)

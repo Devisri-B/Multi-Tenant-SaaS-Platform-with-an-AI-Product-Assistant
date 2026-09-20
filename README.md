@@ -219,13 +219,16 @@ Roles form a cumulative lattice (`viewer < member < admin < owner`). Settings al
 
 ## Why it is built this way
 
-**Shared-schema multi-tenancy.** Every tenant-owned table carries a
-`tenant_id` foreign key. Rather than trusting each route to remember the
-predicate, all reads and writes go through `TenantScopedRepository`
+**Shared-schema multi-tenancy with PostgreSQL RLS.** Every tenant-owned table
+carries a `tenant_id` foreign key. All reads and writes go through `TenantScopedRepository`
 (`backend/app/services/base.py`), which applies `WHERE tenant_id = :tenant_id`
-and refuses to persist or delete a row belonging to another tenant. Retrieval
-is filtered the same way inside SQL, so the assistant physically cannot quote
-another workspace's documents - `tests/test_assistant.py` asserts exactly that.
+and refuses to persist or delete a row belonging to another tenant. On PostgreSQL,
+this is backed by database-level Row Level Security (`FORCE ROW LEVEL SECURITY` with
+`current_setting('app.tenant_id')::uuid`) across `documents`, `document_chunks`,
+`conversations`, and `messages`, ensuring that even an arbitrary SQL injection
+(`OR 1=1`) cannot cross tenant boundaries. Retrieval is filtered inside SQL, so the
+assistant physically cannot quote another workspace's documents - `tests/test_assistant.py`
+and `tests/test_postgres_integration.py` assert exactly that.
 
 **Authorization as a dependency chain.** `bearer token -> current_user ->
 tenant_context -> require_role(...)`. A handler never sees a tenant id from the
