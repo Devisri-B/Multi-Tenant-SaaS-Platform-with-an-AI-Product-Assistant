@@ -10,6 +10,7 @@ from unittest.mock import patch
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.document import Document, DocumentChunk
 from app.models.enums import DocumentStatus
 from app.rag.retriever import (
@@ -126,14 +127,14 @@ def test_hybrid_retrieval_e2e_with_exact_code_matching(db):
         document_id=doc.id,
         ordinal=0,
         content="General network connection timeout guidelines.",
-        embedding=[0.05] * 128,
+        embedding=[0.05] * settings.EMBEDDING_DIMENSIONS,
     )
     chunk_2 = DocumentChunk(
         tenant_id=tenant_id,
         document_id=doc.id,
         ordinal=1,
         content="Fatal database lock failure with code ERR-PG-99281.",
-        embedding=[0.05] * 128,
+        embedding=[0.05] * settings.EMBEDDING_DIMENSIONS,
     )
     db.add_all([chunk_1, chunk_2])
     db.commit()
@@ -173,7 +174,7 @@ def test_hybrid_retrieval_tenant_isolation(db):
             document_id=doc_1.id,
             ordinal=0,
             content="Owner confidential revenue data $100M.",
-            embedding=[0.1] * 128,
+            embedding=[0.1] * settings.EMBEDDING_DIMENSIONS,
         )
     )
 
@@ -193,7 +194,7 @@ def test_hybrid_retrieval_tenant_isolation(db):
             document_id=doc_2.id,
             ordinal=0,
             content="Other public roadmap 2026.",
-            embedding=[0.1] * 128,
+            embedding=[0.1] * settings.EMBEDDING_DIMENSIONS,
         )
     )
     db.commit()
@@ -230,7 +231,7 @@ def test_concurrent_execution_hides_sparse_latency(db):
             document_id=doc.id,
             ordinal=0,
             content="Nimbus product deployment guide and rolling updates.",
-            embedding=[0.1] * 128,
+            embedding=[0.1] * settings.EMBEDDING_DIMENSIONS,
         )
     )
     db.commit()
@@ -238,7 +239,7 @@ def test_concurrent_execution_hides_sparse_latency(db):
     # Simulate a slow embedding call (50ms)
     def slow_embed(*_args, **_kwargs):
         time.sleep(0.05)
-        return [0.1] * 128
+        return [0.1] * settings.EMBEDDING_DIMENSIONS
 
     with patch("app.rag.providers.FakeEmbeddings.embed_query", side_effect=slow_embed):
         start = time.perf_counter()

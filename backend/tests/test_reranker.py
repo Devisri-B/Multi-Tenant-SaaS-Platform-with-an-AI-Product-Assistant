@@ -169,14 +169,14 @@ def test_retrieve_end_to_end_with_reranker(db: Session):
         document_id=doc.id,
         ordinal=0,
         content="General guidelines for office security and badges.",
-        embedding=[0.05] * 128,
+        embedding=[0.05] * settings.EMBEDDING_DIMENSIONS,
     )
     chunk_2 = DocumentChunk(
         tenant_id=tenant.id,
         document_id=doc.id,
         ordinal=1,
         content="SOC2 Type II compliance audit reports and penetration testing records.",
-        embedding=[0.05] * 128,
+        embedding=[0.05] * settings.EMBEDDING_DIMENSIONS,
     )
     db.add_all([chunk_1, chunk_2])
     db.commit()
@@ -220,7 +220,7 @@ def test_retrieve_with_reranker_disabled_uses_raw_rrf(db: Session):
         document_id=doc.id,
         ordinal=0,
         content="Some simple text for retrieval testing.",
-        embedding=[0.1] * 128,
+        embedding=[0.1] * settings.EMBEDDING_DIMENSIONS,
     )
     db.add(c)
     db.commit()
