@@ -36,6 +36,7 @@ def answer_question(
     top_k: int | None = None,
     history: list[tuple[str, str]] | None = None,
     allow_web_search: bool = True,
+    conversation_id: uuid.UUID | None = None,
 ) -> AnswerResult:
     """Execute the LangGraph adaptive RAG workflow with online fallback."""
     started = time.perf_counter()
@@ -50,7 +51,33 @@ def answer_question(
         "allow_web_search": allow_web_search,
     }
 
-    final_state = assistant_graph.invoke(initial_state)
+    # Pass LangSmith / LangChain RunnableConfig for versioning & observability
+    active_prompt_version = prompts.get_prompt_version()
+    tenant_slug = tenant.name.lower().replace(" ", "-") if tenant.name else "workspace"
+    run_config = {
+        "run_name": f"rag-assistant:{tenant_slug}",
+        "tags": [
+            f"tenant:{tenant.id}",
+            f"prompt:{active_prompt_version}",
+            f"env:{settings.ENVIRONMENT}",
+            f"provider:{settings.LLM_PROVIDER}",
+        ],
+        "metadata": {
+            "tenant_id": str(tenant.id),
+            "tenant_name": tenant.name,
+            "conversation_id": str(conversation_id) if conversation_id else None,
+            "prompt_version": active_prompt_version,
+            "app_name": settings.APP_NAME,
+            "environment": settings.ENVIRONMENT,
+            "llm_provider": settings.LLM_PROVIDER,
+            "embedding_provider": settings.EMBEDDING_PROVIDER,
+            "hybrid_search": settings.RAG_ENABLE_HYBRID_SEARCH,
+            "reranker_enabled": settings.RAG_ENABLE_RERANKER,
+            "top_k": top_k or settings.RAG_TOP_K,
+        },
+    }
+
+    final_state = assistant_graph.invoke(initial_state, config=run_config)
 
     latency_ms = int((time.perf_counter() - started) * 1000)
     source_type = final_state.get("source_type", "none")

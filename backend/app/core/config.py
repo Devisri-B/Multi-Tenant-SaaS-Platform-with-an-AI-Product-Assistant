@@ -103,6 +103,13 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = "./storage"
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
+    # -- Observability, Tracing & Versioning (LangSmith) --------------------
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str | None = None
+    LANGCHAIN_PROJECT: str = "nimbus-saas-rag"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+    RAG_PROMPT_VERSION: str = "1.0.0"
+
     @field_validator("BACKEND_CORS_ORIGINS", "MCP_ALLOWED_TENANT_IDS", mode="before")
     @classmethod
     def _parse_list(cls, value: Any) -> Any:
@@ -123,6 +130,14 @@ class Settings(BaseSettings):
                 f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
                 f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
+        # Populate LangSmith environment variables so LangChain and LangGraph auto-trace
+        if self.LANGCHAIN_TRACING_V2 and self.LANGCHAIN_API_KEY:
+            import os
+
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = self.LANGCHAIN_API_KEY
+            os.environ["LANGCHAIN_PROJECT"] = self.LANGCHAIN_PROJECT
+            os.environ["LANGCHAIN_ENDPOINT"] = self.LANGCHAIN_ENDPOINT
         return self
 
     @property

@@ -108,6 +108,7 @@ def ask(
         top_k=payload.top_k,
         history=history,
         allow_web_search=payload.allow_web_search,
+        conversation_id=conversation.id,
     )
 
     message = conversation_service.append_message(

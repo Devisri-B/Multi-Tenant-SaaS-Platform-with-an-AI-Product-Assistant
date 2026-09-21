@@ -2,10 +2,32 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.rag.web_search import WebSearchResult
+
+# -- Prompt Template Versioning ---------------------------------------------
+PROMPT_VERSION: str = "1.0.0"
+
+PROMPT_METADATA: dict[str, Any] = {
+    "version": PROMPT_VERSION,
+    "name": "nimbus-enterprise-rag-v1",
+    "description": (
+        "Production prompt templates for enterprise RAG with inline citations "
+        "and anti-hallucination guardrails."
+    ),
+}
+
+
+def get_prompt_version() -> str:
+    """Return the active prompt template version from settings or fallback to default."""
+    try:
+        from app.core.config import settings
+
+        return getattr(settings, "RAG_PROMPT_VERSION", PROMPT_VERSION)
+    except Exception:
+        return PROMPT_VERSION
 
 SYSTEM_PROMPT = """\
 You are the in-app product assistant for the "{workspace_name}" workspace.
