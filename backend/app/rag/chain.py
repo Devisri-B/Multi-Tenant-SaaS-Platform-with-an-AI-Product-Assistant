@@ -13,7 +13,6 @@ from app.core.logging import get_logger
 from app.models.tenant import Tenant
 from app.rag import prompts
 from app.rag.graph import assistant_graph
-from app.rag.providers import get_embedding_provider
 from app.rag.retriever import RetrievedChunk, retrieve
 
 log = get_logger(__name__)
@@ -76,6 +75,5 @@ def answer_question(
 def semantic_search(
     db: Session, *, tenant_id: uuid.UUID, query: str, top_k: int = 5
 ) -> list[RetrievedChunk]:
-    """Retrieval without generation - powers the docs search box."""
-    query_vector = get_embedding_provider().embed_query(query)
-    return retrieve(db, tenant_id=tenant_id, query_embedding=query_vector, top_k=top_k)
+    """Retrieval without generation - powers the docs search box via concurrent hybrid search."""
+    return retrieve(db, tenant_id=tenant_id, query=query, top_k=top_k)

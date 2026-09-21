@@ -4,6 +4,7 @@ from app.rag.chain import AnswerResult, answer_question, semantic_search
 from app.rag.chunking import Chunk, chunk_text
 from app.rag.graph import assistant_graph, create_assistant_graph
 from app.rag.ingest import extract_text, index_document
+from app.rag.reranker import rerank_chunks
 from app.rag.retriever import RetrievedChunk, retrieve
 from app.rag.web_search import WebSearchResult, get_web_search_provider
 
@@ -19,6 +20,7 @@ __all__ = [
     "extract_text",
     "get_web_search_provider",
     "index_document",
+    "rerank_chunks",
     "retrieve",
     "semantic_search",
 ]

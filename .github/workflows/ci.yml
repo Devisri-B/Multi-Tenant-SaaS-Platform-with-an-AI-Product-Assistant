@@ -123,7 +123,7 @@ jobs:
           SECRET_KEY: ci-secret-key-not-used-anywhere-real
           EMBEDDING_DIMENSIONS: "1536"
           PYTHONPATH: .
-        run: pytest tests/test_postgres_integration.py tests/test_pgvector_query.py -v
+        run: pytest tests/test_postgres_integration.py tests/test_pgvector_query.py tests/test_hybrid_retrieval.py tests/test_reranker.py -v
 
   frontend:
     name: Frontend · lint, typecheck, build

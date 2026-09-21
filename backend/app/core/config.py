@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     RAG_MIN_SCORE: float = 0.40
     DOCUMENT_RELEVANCE_THRESHOLD: float = 0.40
 
+    # -- Hybrid Retrieval (Dense + Sparse) & RRF ---------------------------
+    RAG_ENABLE_HYBRID_SEARCH: bool = True
+    RAG_RRF_K: int = 60
+    RAG_DENSE_WEIGHT: float = 1.0
+    RAG_SPARSE_WEIGHT: float = 1.0
+
+    # -- Cross-Encoder Reranker ---------------------------------------------
+    RAG_ENABLE_RERANKER: bool = True
+    RERANKER_PROVIDER: Literal["cross_encoder", "fake"] = "cross_encoder"
+    RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    RERANKER_TOP_K: int = 5
+    RERANKER_CANDIDATE_POOL: int = 15
+
     # -- Online Web Search --------------------------------------------------
     WEB_SEARCH_ENABLED: bool = True
     WEB_SEARCH_PROVIDER: Literal["duckduckgo", "tavily", "fake"] = "duckduckgo"

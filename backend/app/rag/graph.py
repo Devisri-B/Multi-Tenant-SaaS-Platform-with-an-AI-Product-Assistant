@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.rag import prompts
 from app.rag.memory import format_sliding_window_history
-from app.rag.providers import get_chat_provider, get_embedding_provider
+from app.rag.providers import get_chat_provider
 from app.rag.retriever import RetrievedChunk, retrieve
 from app.rag.web_search import WebSearchResult, get_web_search_provider
 
@@ -152,17 +152,15 @@ def contextualize_query_node(state: AssistantState) -> dict[str, Any]:
 
 
 def retrieve_node(state: AssistantState) -> dict[str, Any]:
-    """Retrieve candidate document chunks from tenant vector store."""
-    embeddings = get_embedding_provider()
+    """Retrieve candidate chunks using concurrent hybrid retrieval (Dense + Sparse + RRF)."""
     search_query = state.get("search_query") or state["question"]
-    query_vector = embeddings.embed_query(search_query)
     db = state["db"]
     top_k = state.get("top_k") or settings.RAG_TOP_K
 
     hits = retrieve(
         db,
         tenant_id=state["tenant_id"],
-        query_embedding=query_vector,
+        query=search_query,
         top_k=top_k,
     )
     return {

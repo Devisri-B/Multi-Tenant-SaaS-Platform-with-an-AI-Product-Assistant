@@ -306,7 +306,9 @@ def get_chat_provider() -> ChatProvider:
 def reset_provider_cache() -> None:
     """Drop cached providers (used by tests that flip ``LLM_PROVIDER``)."""
     from app.rag.nli import reset_nli_cache
+    from app.rag.reranker import reset_reranker_cache
 
     get_embedding_provider.cache_clear()
     get_chat_provider.cache_clear()
     reset_nli_cache()
+    reset_reranker_cache()
