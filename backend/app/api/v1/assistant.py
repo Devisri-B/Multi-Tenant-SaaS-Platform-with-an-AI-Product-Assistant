@@ -95,6 +95,7 @@ def ask(
             event_data=friction,
         )
 
+    summary = conversation_service.sync_conversation_summary(db, conversation)
     history = conversation_service.history_pairs(conversation)
 
     conversation_service.append_message(
@@ -107,6 +108,7 @@ def ask(
         question=payload.question,
         top_k=payload.top_k,
         history=history,
+        conversation_summary=summary,
         allow_web_search=payload.allow_web_search,
         conversation_id=conversation.id,
     )

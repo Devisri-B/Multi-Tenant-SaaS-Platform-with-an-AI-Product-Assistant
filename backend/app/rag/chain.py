@@ -35,6 +35,7 @@ def answer_question(
     question: str,
     top_k: int | None = None,
     history: list[tuple[str, str]] | None = None,
+    conversation_summary: str | None = None,
     allow_web_search: bool = True,
     conversation_id: uuid.UUID | None = None,
 ) -> AnswerResult:
@@ -47,6 +48,7 @@ def answer_question(
         "tenant_name": tenant.name,
         "question": question,
         "history": history,
+        "conversation_summary": conversation_summary,
         "top_k": top_k or settings.RAG_TOP_K,
         "allow_web_search": allow_web_search,
     }

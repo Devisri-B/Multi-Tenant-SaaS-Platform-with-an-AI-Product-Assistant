@@ -29,6 +29,7 @@ class AssistantState(TypedDict, total=False):
     question: str
     search_query: str
     history: list[tuple[str, str]] | None
+    conversation_summary: str | None
     formatted_history: str
     top_k: int
     allow_web_search: bool
@@ -116,10 +117,11 @@ def _to_web_citation(index: int, result: WebSearchResult) -> dict[str, Any]:
 def contextualize_query_node(state: AssistantState) -> dict[str, Any]:
     """Sliding window memory manager: contextualize query and resolve coreferences."""
     history = state.get("history")
+    conversation_summary = state.get("conversation_summary")
     question = state["question"]
-    formatted_history = format_sliding_window_history(history)
+    formatted_history = format_sliding_window_history(history, summary=conversation_summary)
 
-    if not history or not settings.RAG_ENABLE_QUERY_REWRITE:
+    if (not history and not conversation_summary) or not settings.RAG_ENABLE_QUERY_REWRITE:
         return {
             "search_query": question,
             "formatted_history": formatted_history,
@@ -137,7 +139,8 @@ def contextualize_query_node(state: AssistantState) -> dict[str, Any]:
             "langgraph.contextualize_query",
             original=question,
             rewritten=search_query,
-            history_turns=len(history),
+            history_turns=len(history) if history else 0,
+            has_summary=bool(conversation_summary),
         )
         return {
             "search_query": search_query,

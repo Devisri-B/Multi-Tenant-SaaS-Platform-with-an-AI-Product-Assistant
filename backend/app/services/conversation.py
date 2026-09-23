@@ -93,6 +93,11 @@ def append_message(
     return message
 
 
+def all_history_pairs(conversation: Conversation) -> list[tuple[str, str]]:
+    """All turns in the conversation as (role, content) pairs."""
+    return [(str(message.role), message.content) for message in conversation.messages]
+
+
 def history_pairs(
     conversation: Conversation, limit: int | None = None
 ) -> list[tuple[str, str]]:
@@ -103,3 +108,28 @@ def history_pairs(
     return [
         (str(message.role), message.content) for message in conversation.messages[-window:]
     ]
+
+
+def sync_conversation_summary(
+    db: Session,
+    conversation: Conversation,
+    window_size: int | None = None,
+) -> str | None:
+    """Evaluate if messages exceed the window, update conversation.summary, and persist it."""
+    from app.core.config import settings
+    from app.rag.memory import split_history_and_pruned, summarize_messages
+
+    window = window_size or settings.RAG_MEMORY_WINDOW_SIZE
+    all_pairs = all_history_pairs(conversation)
+    older_msgs, _ = split_history_and_pruned(all_pairs, window)
+
+    if not older_msgs:
+        return conversation.summary
+
+    new_summary = summarize_messages(older_msgs, existing_summary=None)
+    if new_summary:
+        conversation.summary = new_summary
+        db.add(conversation)
+        db.flush()
+
+    return conversation.summary

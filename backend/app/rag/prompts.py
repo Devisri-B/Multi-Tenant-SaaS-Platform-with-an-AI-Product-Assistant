@@ -104,6 +104,18 @@ Do NOT answer the question, only return the rephrased standalone query.
 Follow-up Question: {question}
 Standalone Query:"""
 
+SUMMARIZE_CONVERSATION_PROMPT = """\
+You are a conversation summarizer. Summarize the following earlier dialogue turns into a \
+concise, objective overview (under 150 words). Retain all critical user questions, \
+preferences, constraints, and key decisions so future turns retain context.
+
+{existing_summary_clause}
+<dialogue_to_summarize>
+{dialogue}
+</dialogue_to_summarize>
+
+Summary:"""
+
 GRADE_DOCUMENTS_PROMPT = """\
 You are a grader assessing whether retrieved documentation excerpts are relevant.
 Question: {question}

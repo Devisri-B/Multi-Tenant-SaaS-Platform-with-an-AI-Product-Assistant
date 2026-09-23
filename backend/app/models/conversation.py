@@ -29,6 +29,7 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         GUID(), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="New conversation")
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation",
