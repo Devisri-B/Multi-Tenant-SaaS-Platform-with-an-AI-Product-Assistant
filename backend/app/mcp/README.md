@@ -7,12 +7,13 @@ A production-grade implementation of the **Model Context Protocol (MCP)** exposi
 ## Architecture Overview
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "16px"}}}%%
-flowchart LR
-    C["AI client<br/>Claude Desktop / agent.py"] <-- "JSON-RPC<br/>over stdio" --> S["FastMCP server"]
+%%{init: {"flowchart": {"nodeSpacing": 35, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart TB
+    C["AI client<br/>Claude Desktop / agent.py"]
+    C <-->|"JSON-RPC<br/>over stdio"| S["FastMCP server"]
     S --> G{{"Tenant<br/>allowed?"}}
-    G -- no --> E(["TenantNotFound"])
-    G -- yes --> T["3 tools<br/>list_workspaces<br/>semantic_search_chunks<br/>self_rag_query"]
+    G -- "no" --> E(["TenantNotFound"])
+    G -- "yes" --> T["3 tools<br/>list_workspaces<br/>semantic_search_chunks<br/>self_rag_query"]
     T --> P["Self-RAG pipeline"]
     T --> DB[("Postgres + pgvector")]
     P --> DB

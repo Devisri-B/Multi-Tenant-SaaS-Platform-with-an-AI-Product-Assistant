@@ -15,7 +15,7 @@ A production-grade SaaS platform featuring isolated customer workspaces served f
 - **Adaptive Self-RAG Knowledge Pipeline**: LangGraph state graph combining dense vector search (`pgvector`), sparse lexical search (PostgreSQL FTS), cross-encoder reranking, and local DeBERTa-v3 NLI anti-hallucination verification.
 - **Dynamic Online Search Fallback**: Automatically evaluates context relevance and routes out-of-scope queries to external web search (DuckDuckGo / Tavily) with external citations.
 - **Model Context Protocol (FastMCP) Integration**: Built-in FastMCP server (`stdio`) and autonomous tool-calling agent enabling Claude Desktop and Cursor to interface directly with tenant knowledge bases.
-- **Zero-Cost Local & CI Testing**: Pluggable provider seams allow running all 220+ tests against SQLite and deterministic mock models with zero API costs and no external dependencies.
+- **Zero-Cost Local & CI Testing**: Pluggable provider seams allow running all tests against SQLite and deterministic mock models with zero API costs and no external dependencies.
 
 ---
 
@@ -24,17 +24,16 @@ A production-grade SaaS platform featuring isolated customer workspaces served f
 ### 1. Adaptive Self-RAG Pipeline
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "16px"}}}%%
-flowchart LR
-    Q(["User question"]) --> R["Rewrite query<br/>using chat memory"]
-    R --> H["Hybrid search + rerank<br/>(this tenant only)"]
+%%{init: {"flowchart": {"nodeSpacing": 35, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart TB
+    Q(["User question"]) --> H["Hybrid search + rerank<br/>(this tenant only)"]
     H --> G1{{"Relevant<br/>docs?"}}
-    G1 -- yes --> GEN["Generate answer"]
+    G1 -- "yes" --> GEN["Generate answer"]
+    G1 -- "no" --> W["Web search"]
     GEN --> G2{{"Grounded?<br/>(NLI check)"}}
-    G2 -- yes --> A1(["Answer +<br/>citations"])
+    G2 -- "yes" --> A1(["Answer +<br/>citations"])
     G2 -- "no, retry ≤ 2" --> GEN
-    G2 -- "still no" --> W["Web search"]
-    G1 -- no --> W
+    G2 -- "still no" --> W
     W --> A2(["Web answer or<br/>'I don't know'"])
 
     classDef io fill:#1e3a8a,stroke:#1e3a8a,color:#ffffff
@@ -42,7 +41,7 @@ flowchart LR
     classDef guard fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:2px
     classDef out fill:#bbf7d0,stroke:#15803d,color:#052e16,stroke-width:2px
     class Q io
-    class R,H,GEN,W step
+    class H,GEN,W step
     class G1,G2 guard
     class A1,A2 out
 ```
@@ -69,12 +68,13 @@ Nimbus exposes tenant knowledge to external AI agents and IDEs via a standardize
 ### MCP Architecture
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "16px"}}}%%
-flowchart LR
-    C["AI client<br/>Claude Desktop / agent.py"] <-- "JSON-RPC<br/>over stdio" --> S["FastMCP server"]
+%%{init: {"flowchart": {"nodeSpacing": 35, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "15px"}}}%%
+flowchart TB
+    C["AI client<br/>Claude Desktop / agent.py"]
+    C <-->|"JSON-RPC<br/>over stdio"| S["FastMCP server"]
     S --> G{{"Tenant<br/>allowed?"}}
-    G -- no --> E(["TenantNotFound"])
-    G -- yes --> T["3 tools<br/>list_workspaces<br/>semantic_search_chunks<br/>self_rag_query"]
+    G -- "no" --> E(["TenantNotFound"])
+    G -- "yes" --> T["3 tools<br/>list_workspaces<br/>semantic_search_chunks<br/>self_rag_query"]
     T --> P["Self-RAG pipeline"]
     T --> DB[("Postgres + pgvector")]
     P --> DB
