@@ -325,10 +325,9 @@ def grade_hallucination_node(state: AssistantState) -> dict[str, Any]:
     context_block = prompts.build_context_block(passages)
 
     # 1. Check Hallucination (NLI entailment scoring via configured provider)
-    from app.rag.nli import get_nli_provider
+    from app.rag.nli import verify_groundedness
 
-    nli_provider = get_nli_provider()
-    nli_result = nli_provider.check_groundedness(context=context_block, answer=answer)
+    nli_result = verify_groundedness(context=context_block, answer=answer)
     is_grounded = nli_result.is_grounded
 
     # 2. Check Answer Relevance (Does it resolve the question?)

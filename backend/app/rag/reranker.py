@@ -18,6 +18,15 @@ import structlog
 from app.core.config import settings
 from app.core.exceptions import ProviderError
 
+try:
+    from langsmith import traceable
+except ImportError:  # pragma: no cover
+    def traceable(name: str | None = None, run_type: str | None = None, **kwargs: Any):
+        def decorator(func: Any) -> Any:
+            return func
+
+        return decorator
+
 if TYPE_CHECKING:
     from app.rag.retriever import RetrievedChunk
 
@@ -174,6 +183,7 @@ def reset_reranker_cache() -> None:
     get_reranker_provider.cache_clear()
 
 
+@traceable(name="cross_encoder_rerank", run_type="retriever")
 def rerank_chunks(
     query: str,
     chunks: list[RetrievedChunk],
@@ -182,3 +192,7 @@ def rerank_chunks(
     """Rerank candidate chunks using the active cross-encoder provider."""
     provider = get_reranker_provider()
     return provider.rerank(query, chunks, top_k=top_k)
+
+
+# Alias for explicit candidate reranking sub-span
+rerank_candidates = rerank_chunks

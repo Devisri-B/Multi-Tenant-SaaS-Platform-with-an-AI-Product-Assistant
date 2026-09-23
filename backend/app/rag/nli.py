@@ -17,6 +17,15 @@ import structlog
 from app.core.config import settings
 from app.core.exceptions import ProviderError
 
+try:
+    from langsmith import traceable
+except ImportError:  # pragma: no cover
+    def traceable(name: str | None = None, run_type: str | None = None, **kwargs: Any):
+        def decorator(func: Any) -> Any:
+            return func
+
+        return decorator
+
 logger = structlog.get_logger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z0-9']+")
@@ -325,3 +334,21 @@ def get_nli_provider() -> NLIProvider:
 def reset_nli_cache() -> None:
     """Clear cached NLI provider instances."""
     get_nli_provider.cache_clear()
+
+
+@traceable(name="nli_hallucination_check", run_type="chain")
+def verify_groundedness(
+    context: str,
+    answer: str,
+    *,
+    entailment_threshold: float | None = None,
+    contradiction_threshold: float | None = None,
+) -> NLIResult:
+    """Evaluate whether candidate answer is entailed by context without hallucination."""
+    provider = get_nli_provider()
+    return provider.check_groundedness(
+        context=context,
+        answer=answer,
+        entailment_threshold=entailment_threshold,
+        contradiction_threshold=contradiction_threshold,
+    )

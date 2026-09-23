@@ -89,8 +89,45 @@ def main():
     dummy_question = "What are the workspace member roles and permission limits?"
 
     # Execute chain with active DB session
+    from app.models.document import Document, DocumentChunk
+    from app.models.enums import DocumentStatus
+    from app.models.tenant import Tenant
+
     try:
         with session_scope() as test_db:
+            # Seed tenant, doc and chunk so all retrieval, reranking, and NLI sub-spans trigger
+            t_record = Tenant(
+                id=dummy_tenant_id,
+                name="Acme Corp Demo",
+                slug=f"acme-{uuid.uuid4().hex[:6]}",
+            )
+            test_db.add(t_record)
+            test_db.flush()
+
+            doc = Document(
+                tenant_id=dummy_tenant_id,
+                title="Workspace Roles and Permissions",
+                source_name="roles.md",
+                checksum="test-checksum-123",
+                status=DocumentStatus.INDEXED,
+            )
+            test_db.add(doc)
+            test_db.flush()
+
+            chunk = DocumentChunk(
+                tenant_id=dummy_tenant_id,
+                document_id=doc.id,
+                ordinal=0,
+                content=(
+                    "Workspace roles include owner, admin, and member. "
+                    "Viewers can read docs and ask questions."
+                ),
+                embedding=[0.05] * settings.EMBEDDING_DIMENSIONS,
+                token_estimate=25,
+            )
+            test_db.add(chunk)
+            test_db.commit()
+
             result = rag_chain.answer_question(
                 test_db,
                 tenant=dummy_tenant,  # type: ignore[arg-type]

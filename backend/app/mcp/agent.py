@@ -21,6 +21,15 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult, Tool
 
+try:
+    from langsmith import traceable
+except ImportError:  # pragma: no cover
+    def traceable(name: str | None = None, run_type: str | None = None, **kwargs: Any):
+        def decorator(func: Any) -> Any:
+            return func
+
+        return decorator
+
 # Determine backend base directory
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -67,6 +76,7 @@ class ToolCaller(Protocol):
     ) -> CallToolResult: ...
 
 
+@traceable(name="mcp_agent_workflow", run_type="chain")
 async def execute_mcp_query(
     question: str,
     tenant_id: str | None = None,
@@ -108,17 +118,22 @@ async def execute_mcp_query(
             await _run_deterministic_agent_loop(session, question, tenant_id)
 
 
+@traceable(name="mcp_deterministic_loop", run_type="chain")
 async def _run_deterministic_agent_loop(
     session: ToolCaller,
     question: str,
     tenant_id: str | None,
 ) -> None:
     """Deterministic agent flow for offline testing or verifying MCP protocol."""
+    @traceable(name="mcp_tool_call", run_type="tool")
+    async def _call_tool(name: str, args: dict[str, Any]) -> CallToolResult:
+        return await session.call_tool(name, args)
+
     print("\n" + "-" * 70)
     print("Agent Step 1: Discovering active workspaces via 'list_workspaces'...")
     print("-" * 70)
 
-    workspaces_res = await session.call_tool("list_workspaces", {})
+    workspaces_res = await _call_tool("list_workspaces", {})
     workspaces_text = tool_result_text(workspaces_res)
     try:
         workspaces_data = json.loads(workspaces_text)
@@ -146,7 +161,7 @@ async def _run_deterministic_agent_loop(
     if selected_tenant:
         tool_args["tenant_id"] = selected_tenant
 
-    result = await session.call_tool("self_rag_query", tool_args)
+    result = await _call_tool("self_rag_query", tool_args)
     content_text = tool_result_text(result)
 
     try:
@@ -195,6 +210,7 @@ def mcp_tools_to_anthropic(tools: list[Tool]) -> list[dict[str, Any]]:
     ]
 
 
+@traceable(name="mcp_react_agent_loop", run_type="chain")
 async def run_agent_loop(
     client: Any,
     session: ToolCaller,
@@ -216,6 +232,10 @@ async def run_agent_loop(
     ``client`` is an ``anthropic.AsyncAnthropic``; typed as ``Any`` so tests can
     substitute a scripted fake without importing the SDK's param types.
     """
+    @traceable(name="mcp_tool_call", run_type="tool")
+    async def _call_tool(name: str, args: dict[str, Any]) -> CallToolResult:
+        return await session.call_tool(name, args)
+
     messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
     response = None
 
@@ -241,7 +261,7 @@ async def run_agent_loop(
             if on_tool_call is not None:
                 on_tool_call(tool_use.name, fn_args)
 
-            mcp_res = await session.call_tool(tool_use.name, fn_args)
+            mcp_res = await _call_tool(tool_use.name, fn_args)
             block: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": tool_use.id,
@@ -262,6 +282,7 @@ async def run_agent_loop(
     return "".join(b.text for b in response.content if b.type == "text")
 
 
+@traceable(name="mcp_anthropic_agent_loop", run_type="chain")
 async def _run_anthropic_agent_loop(
     session: ClientSession,
     available_tools: list[Tool],

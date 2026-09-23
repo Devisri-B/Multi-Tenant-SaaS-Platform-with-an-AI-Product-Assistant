@@ -24,6 +24,15 @@ from app.db.tenancy import set_tenant_context
 from app.models.document import Document, DocumentChunk
 from app.models.enums import DocumentStatus
 
+try:
+    from langsmith import traceable
+except ImportError:  # pragma: no cover
+    def traceable(name: str | None = None, run_type: str | None = None, **kwargs: Any):
+        def decorator(func: Any) -> Any:
+            return func
+
+        return decorator
+
 log = get_logger(__name__)
 
 _WORD_RE = re.compile(r"[a-z0-9']+")
@@ -263,6 +272,7 @@ def _retrieve_sparse_python(
 # ---------------------------------------------------------------------------
 # Reciprocal Rank Fusion (RRF)
 # ---------------------------------------------------------------------------
+@traceable(name="reciprocal_rank_fusion", run_type="parser")
 def reciprocal_rank_fusion(
     dense_hits: list[RetrievedChunk],
     sparse_hits: list[RetrievedChunk],
@@ -371,17 +381,26 @@ def retrieve_hybrid_concurrent(
         # active transactions on the caller's session.
         # Instead, generate dense embedding in background thread (concurrency)
         # while querying sparse lexical hits on the caller's session.
+        @traceable(name="sparse_lexical_search", run_type="retriever")
+        def _sparse_local() -> list[RetrievedChunk]:
+            return _retrieve_sparse_python(db, tenant_id, query, candidate_k)
+
+        @traceable(name="dense_vector_search", run_type="retriever")
+        def _dense_local(embedding: list[float]) -> list[RetrievedChunk]:
+            return _retrieve_in_python(db, tenant_id, embedding, candidate_k)
+
         if query_embedding is None:
             with ThreadPoolExecutor(max_workers=1, thread_name_prefix="embedder") as executor:
                 emb_future = executor.submit(get_embedding_provider().embed_query, query)
-                sparse_hits = _retrieve_sparse_python(db, tenant_id, query, candidate_k)
+                sparse_hits = _sparse_local()
                 emb = emb_future.result()
         else:
             emb = query_embedding
-            sparse_hits = _retrieve_sparse_python(db, tenant_id, query, candidate_k)
+            sparse_hits = _sparse_local()
 
-        dense_hits = _retrieve_in_python(db, tenant_id, emb, candidate_k)
+        dense_hits = _dense_local(emb)
     else:
+        @traceable(name="dense_vector_search", run_type="retriever")
         def _dense_worker() -> list[RetrievedChunk]:
             # Dedicated session for thread safety and independent RLS context
             with Session(bind=bind_target, expire_on_commit=False) as sess:
@@ -391,6 +410,7 @@ def retrieve_hybrid_concurrent(
                     emb = get_embedding_provider().embed_query(query)
                 return _retrieve_pgvector(sess, tenant_id, emb, candidate_k)
 
+        @traceable(name="sparse_lexical_search", run_type="retriever")
         def _sparse_worker() -> list[RetrievedChunk]:
             # Dedicated session for thread safety and independent RLS context
             with Session(bind=bind_target, expire_on_commit=False) as sess:
