@@ -7,6 +7,7 @@ without any network access.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -25,8 +26,8 @@ def _tool_use(tool_id: str, name: str, **args: Any) -> Any:
     return SimpleNamespace(type="tool_use", id=tool_id, name=name, input=args)
 
 
-def _response(stop_reason: str, *content: Any) -> Any:
-    return SimpleNamespace(stop_reason=stop_reason, content=list(content))
+def _response(stop_reason: str, *content: Any, usage: Any = None) -> Any:
+    return SimpleNamespace(stop_reason=stop_reason, content=list(content), usage=usage)
 
 
 class FakeMessages:
@@ -183,3 +184,154 @@ def test_tool_result_text_skips_non_text_blocks():
         ]
     )
     assert agent.tool_result_text(result) == "hello\n[non-text image content omitted]"
+
+
+@pytest.mark.asyncio
+async def test_loop_stops_when_token_budget_exceeded():
+    looping = _response(
+        "tool_use",
+        _tool_use("tu", "list_workspaces"),
+        usage=SimpleNamespace(input_tokens=2000, output_tokens=1000),
+    )
+    client = FakeAnthropic([looping] * 5)
+    session = FakeSession({"list_workspaces": {"workspaces": []}})
+
+    answer = await agent.run_agent_loop(
+        client,
+        session,
+        TOOLS,
+        "q",
+        system_prompt="sys",
+        model="m",
+        max_token_budget=5000,
+    )
+
+    assert "Token budget exceeded" in answer
+    assert "6000 tokens used > 5000 limit" in answer
+    # Exceeded on turn 2 (turn 1 = 3000, turn 2 = 6000)
+    assert len(client.messages.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_loop_handles_tool_timeout_gracefully():
+    class SlowSession:
+        def __init__(self, delay: float):
+            self.delay = delay
+            self.calls: list[str] = []
+
+        async def call_tool(self, name: str, arguments: dict[str, Any] | None = None):
+            self.calls.append(name)
+            await asyncio.sleep(self.delay)
+            return CallToolResult(
+                content=[TextContent(type="text", text="ok")],
+                isError=False,
+            )
+
+    client = FakeAnthropic(
+        [
+            _response("tool_use", _tool_use("tu_1", "slow_tool")),
+            _response("end_turn", _text("Tool timed out, answered with fallback.")),
+        ]
+    )
+    slow_session = SlowSession(delay=0.2)
+
+    answer = await agent.run_agent_loop(
+        client,
+        slow_session,
+        TOOLS,
+        "query",
+        system_prompt="sys",
+        model="m",
+        tool_timeout=0.05,
+    )
+
+    assert answer == "Tool timed out, answered with fallback."
+    assert slow_session.calls == ["slow_tool"]
+    # Verify the tool result returned to Claude was flagged as error and contains timeout message
+    tool_result = client.messages.requests[1]["messages"][2]["content"][0]
+    assert tool_result["is_error"] is True
+    assert "timed out after 0.05 seconds" in tool_result["content"]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_tool_execution():
+    client = FakeAnthropic(
+        [
+            _response(
+                "tool_use",
+                _tool_use("tu_1", "tool_a"),
+                _tool_use("tu_2", "tool_b"),
+            ),
+            _response("end_turn", _text("Both tools executed.")),
+        ]
+    )
+    session = FakeSession(
+        {
+            "tool_a": {"status": "a_done"},
+            "tool_b": {"status": "b_done"},
+        }
+    )
+
+    answer = await agent.run_agent_loop(
+        client,
+        session,
+        TOOLS,
+        "run both",
+        system_prompt="sys",
+        model="m",
+    )
+
+    assert answer == "Both tools executed."
+    assert {c[0] for c in session.calls} == {"tool_a", "tool_b"}
+    # Verify that the user message sent back contains both tool results
+    user_results = client.messages.requests[1]["messages"][2]["content"]
+    assert len(user_results) == 2
+    tool_use_ids = {r["tool_use_id"] for r in user_results}
+    assert tool_use_ids == {"tu_1", "tu_2"}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_tool_execution_with_exception():
+    class CrashingSession:
+        async def call_tool(self, name: str, arguments: dict[str, Any] | None = None):
+            if name == "crash_tool":
+                raise RuntimeError("Hardware failure on tool")
+            return CallToolResult(
+                content=[TextContent(type="text", text="ok")],
+                isError=False,
+            )
+
+    client = FakeAnthropic(
+        [
+            _response(
+                "tool_use",
+                _tool_use("tu_1", "good_tool"),
+                _tool_use("tu_2", "crash_tool"),
+            ),
+            _response("end_turn", _text("Handled partial failure.")),
+        ]
+    )
+    session = CrashingSession()
+
+    answer = await agent.run_agent_loop(
+        client,
+        session,
+        TOOLS,
+        "run both",
+        system_prompt="sys",
+        model="m",
+    )
+
+    assert answer == "Handled partial failure."
+    user_results = client.messages.requests[1]["messages"][2]["content"]
+    assert len(user_results) == 2
+
+    # Verify good tool succeeded
+    assert user_results[0]["tool_use_id"] == "tu_1"
+    assert user_results[0].get("is_error") is not True
+    assert "ok" in user_results[0]["content"]
+
+    # Verify crash_tool was safely captured via return_exceptions=True
+    assert user_results[1]["tool_use_id"] == "tu_2"
+    assert user_results[1]["is_error"] is True
+    assert "Hardware failure on tool" in user_results[1]["content"]

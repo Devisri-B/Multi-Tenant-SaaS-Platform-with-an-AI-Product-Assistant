@@ -19,7 +19,7 @@ from typing import Any, Protocol
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import CallToolResult, Tool
+from mcp.types import CallToolResult, TextContent, Tool
 
 try:
     from langsmith import traceable
@@ -39,6 +39,10 @@ DEFAULT_CHAT_MODEL = "claude-haiku-4-5"
 
 # Hard ceiling on model <-> tool round-trips so a confused model cannot loop forever.
 MAX_AGENT_TURNS = 8
+
+# Token budget guard and tool call timeout defaults
+DEFAULT_MAX_TOKEN_BUDGET = int(os.getenv("MCP_AGENT_MAX_TOKEN_BUDGET", "50000"))
+DEFAULT_TOOL_TIMEOUT = float(os.getenv("MCP_TOOL_TIMEOUT_SECONDS", "30.0"))
 
 
 def get_server_parameters() -> StdioServerParameters:
@@ -81,6 +85,9 @@ async def execute_mcp_query(
     question: str,
     tenant_id: str | None = None,
     use_llm: bool = True,
+    *,
+    max_token_budget: int = DEFAULT_MAX_TOKEN_BUDGET,
+    tool_timeout: float = DEFAULT_TOOL_TIMEOUT,
 ) -> None:
     """Run the autonomous agent flow connected to the Self-RAG MCP server."""
     server_params = get_server_parameters()
@@ -111,11 +118,23 @@ async def execute_mcp_query(
 
         # 3. Autonomous Reasoning Loop
         if use_llm and anthropic_api_key:
-            await _run_anthropic_agent_loop(session, available_tools, question, tenant_id)
+            await _run_anthropic_agent_loop(
+                session,
+                available_tools,
+                question,
+                tenant_id,
+                max_token_budget=max_token_budget,
+                tool_timeout=tool_timeout,
+            )
         else:
             if use_llm and not anthropic_api_key:
                 print("\nNo ANTHROPIC_API_KEY detected. Running in demonstration mode.")
-            await _run_deterministic_agent_loop(session, question, tenant_id)
+            await _run_deterministic_agent_loop(
+                session,
+                question,
+                tenant_id,
+                tool_timeout=tool_timeout,
+            )
 
 
 @traceable(name="mcp_deterministic_loop", run_type="chain")
@@ -123,11 +142,24 @@ async def _run_deterministic_agent_loop(
     session: ToolCaller,
     question: str,
     tenant_id: str | None,
+    *,
+    tool_timeout: float = DEFAULT_TOOL_TIMEOUT,
 ) -> None:
     """Deterministic agent flow for offline testing or verifying MCP protocol."""
     @traceable(name="mcp_tool_call", run_type="tool")
     async def _call_tool(name: str, args: dict[str, Any]) -> CallToolResult:
-        return await session.call_tool(name, args)
+        try:
+            return await asyncio.wait_for(session.call_tool(name, args), timeout=tool_timeout)
+        except asyncio.TimeoutError:
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Error: Tool '{name}' timed out after {tool_timeout} seconds.",
+                    )
+                ],
+                isError=True,
+            )
 
     print("\n" + "-" * 70)
     print("Agent Step 1: Discovering active workspaces via 'list_workspaces'...")
@@ -220,6 +252,8 @@ async def run_agent_loop(
     system_prompt: str,
     model: str,
     max_turns: int = MAX_AGENT_TURNS,
+    max_token_budget: int = DEFAULT_MAX_TOKEN_BUDGET,
+    tool_timeout: float = DEFAULT_TOOL_TIMEOUT,
     on_tool_call: Any = None,
 ) -> str:
     """ReAct loop: let Claude call MCP tools until it produces a final answer.
@@ -234,10 +268,22 @@ async def run_agent_loop(
     """
     @traceable(name="mcp_tool_call", run_type="tool")
     async def _call_tool(name: str, args: dict[str, Any]) -> CallToolResult:
-        return await session.call_tool(name, args)
+        try:
+            return await asyncio.wait_for(session.call_tool(name, args), timeout=tool_timeout)
+        except asyncio.TimeoutError:
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Error: Tool '{name}' timed out after {tool_timeout} seconds.",
+                    )
+                ],
+                isError=True,
+            )
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
     response = None
+    cumulative_tokens = 0
 
     for _turn in range(max_turns):
         response = await client.messages.create(
@@ -248,6 +294,18 @@ async def run_agent_loop(
             tools=tools,
         )
 
+        # Track cumulative token consumption across turns
+        usage = getattr(response, "usage", None)
+        if usage:
+            in_toks = getattr(usage, "input_tokens", 0) or 0
+            out_toks = getattr(usage, "output_tokens", 0) or 0
+            cumulative_tokens += in_toks + out_toks
+            if max_token_budget > 0 and cumulative_tokens > max_token_budget:
+                return (
+                    f"Agent stopped: Token budget exceeded ({cumulative_tokens} "
+                    f"tokens used > {max_token_budget} limit)."
+                )
+
         if response.stop_reason != "tool_use":
             break
 
@@ -255,21 +313,40 @@ async def run_agent_loop(
         # The assistant turn must be echoed back verbatim, tool_use blocks included.
         messages.append({"role": "assistant", "content": response.content})
 
-        tool_results: list[dict[str, Any]] = []
-        for tool_use in tool_uses:
-            fn_args = dict(tool_use.input or {})
+        async def _execute_single_tool(tu: Any) -> dict[str, Any]:
+            fn_args = dict(tu.input or {})
             if on_tool_call is not None:
-                on_tool_call(tool_use.name, fn_args)
+                on_tool_call(tu.name, fn_args)
 
-            mcp_res = await _call_tool(tool_use.name, fn_args)
+            mcp_res = await _call_tool(tu.name, fn_args)
             block: dict[str, Any] = {
                 "type": "tool_result",
-                "tool_use_id": tool_use.id,
+                "tool_use_id": tu.id,
                 "content": tool_result_text(mcp_res),
             }
             if mcp_res.isError:
                 block["is_error"] = True
-            tool_results.append(block)
+            return block
+
+        # Dispatch tool calls concurrently using asyncio.gather with per-tool timeouts
+        raw_results = await asyncio.gather(
+            *[_execute_single_tool(tu) for tu in tool_uses],
+            return_exceptions=True,
+        )
+
+        tool_results: list[dict[str, Any]] = []
+        for tu, res in zip(tool_uses, raw_results, strict=True):
+            if isinstance(res, Exception):
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": f"Error: Tool execution failed: {res}",
+                        "is_error": True,
+                    }
+                )
+            else:
+                tool_results.append(res)
 
         # All results for one assistant turn go back in a single user message.
         messages.append({"role": "user", "content": tool_results})
@@ -288,6 +365,9 @@ async def _run_anthropic_agent_loop(
     available_tools: list[Tool],
     question: str,
     tenant_id: str | None,
+    *,
+    max_token_budget: int = DEFAULT_MAX_TOKEN_BUDGET,
+    tool_timeout: float = DEFAULT_TOOL_TIMEOUT,
 ) -> None:
     """Full ReAct loop powered by Anthropic Claude tool calling over MCP."""
     import anthropic
@@ -298,12 +378,17 @@ async def _run_anthropic_agent_loop(
     model = os.getenv("ANTHROPIC_CHAT_MODEL", DEFAULT_CHAT_MODEL)
 
     system_prompt = (
-        "You are an executive research agent. You have access to a Self-RAG Knowledge Base "
-        "via Model Context Protocol (MCP) tools. Always query the MCP tools to verify facts "
-        "before answering. Cite sources appropriately."
+        "You are an executive research agent following the ReAct (Reason + Act) pattern.\n"
+        "You have access to a Self-RAG Knowledge Base via Model Context Protocol (MCP) tools.\n\n"
+        "For each step of your investigation:\n"
+        "1. Thought: Briefly explain your reasoning and what specific information you need next.\n"
+        "2. Action: Invoke the appropriate MCP tool.\n"
+        "3. Observation: Analyze the returned tool results and decide if further "
+        "retrieval is needed.\n\n"
+        "Always query the MCP tools to verify facts before answering. Cite sources appropriately."
     )
     if tenant_id:
-        system_prompt += f" The current tenant UUID is {tenant_id}."
+        system_prompt += f"\nThe current tenant UUID is {tenant_id}."
 
     print("\n" + "-" * 70)
     print(f"Agent Reasoning: Claude ({model}) tool-calling loop over MCP...")
@@ -320,11 +405,18 @@ async def _run_anthropic_agent_loop(
             question,
             system_prompt=system_prompt,
             model=model,
+            max_token_budget=max_token_budget,
+            tool_timeout=tool_timeout,
             on_tool_call=_log_tool_call,
         )
     except anthropic.APIError as exc:
         print(f"Anthropic API error: {exc}. Falling back to deterministic mode.")
-        await _run_deterministic_agent_loop(session, question, tenant_id)
+        await _run_deterministic_agent_loop(
+            session,
+            question,
+            tenant_id,
+            tool_timeout=tool_timeout,
+        )
         return
 
     print("\n" + "=" * 70)
@@ -354,6 +446,18 @@ def main():
         action="store_true",
         help="Force deterministic mode without external LLM API calls.",
     )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_MAX_TOKEN_BUDGET,
+        help=f"Cumulative token budget ceiling (default: {DEFAULT_MAX_TOKEN_BUDGET}).",
+    )
+    parser.add_argument(
+        "--tool-timeout",
+        type=float,
+        default=DEFAULT_TOOL_TIMEOUT,
+        help=f"Per-tool execution timeout in seconds (default: {DEFAULT_TOOL_TIMEOUT}s).",
+    )
     args = parser.parse_args()
 
     asyncio.run(
@@ -361,6 +465,8 @@ def main():
             question=args.question,
             tenant_id=args.tenant_id,
             use_llm=not args.offline,
+            max_token_budget=args.max_tokens,
+            tool_timeout=args.tool_timeout,
         )
     )
 

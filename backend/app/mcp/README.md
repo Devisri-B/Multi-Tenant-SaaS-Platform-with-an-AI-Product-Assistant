@@ -64,6 +64,9 @@ python -m app.mcp.agent --question "What is the refund policy?" --offline
 # Full LLM mode: Claude tool-calling loop (AsyncAnthropic) over MCP, loops until a final answer:
 export ANTHROPIC_API_KEY="sk-ant-..."
 python -m app.mcp.agent --question "Explain the document upload limits."
+
+# Guardrails: custom cumulative token budget and per-tool execution timeout:
+python -m app.mcp.agent --question "Summarize docs" --max-tokens 30000 --tool-timeout 15.0
 ```
 
 ### 3. Run Automated Tests
