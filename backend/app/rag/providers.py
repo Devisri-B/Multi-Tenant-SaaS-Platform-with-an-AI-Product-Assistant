@@ -204,7 +204,7 @@ class FakeChat(ChatProvider):
             candidate_sentences.sort(key=lambda x: x[0], reverse=True)
             picked: list[str] = []
             seen: set[str] = set()
-            for score, idx, s in candidate_sentences:
+            for _score, idx, s in candidate_sentences:
                 s_clean = re.sub(r"\s+", " ", s.strip().rstrip("."))
                 if s_clean and s_clean not in seen:
                     seen.add(s_clean)
@@ -216,12 +216,15 @@ class FakeChat(ChatProvider):
                 body = " ".join(picked)
             else:
                 snip_match = re.search(r"Excerpt:\s*(.*?)(?=\n\n|\Z)", web_context, flags=re.DOTALL)
-                first_snip = snip_match.group(1).strip() if snip_match else web_context[:200].strip()
+                first_snip = (
+                    snip_match.group(1).strip() if snip_match else web_context[:200].strip()
+                )
                 first_clean = re.sub(r"\[[a-zA-Z0-9]+\]", "", first_snip).rstrip(".")
                 body = f"{first_clean} [1]."
 
             return (
-                f"This answer was found via online search (not in workspace documentation):\n\n{body}"
+                "This answer was found via online search (not in workspace documentation):\n\n"
+                f"{body}"
             )
 
         # Standard workspace docs context

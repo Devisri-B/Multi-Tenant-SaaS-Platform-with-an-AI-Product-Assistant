@@ -30,11 +30,11 @@ if not _is_postgres_up():
     os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
     os.environ["LLM_PROVIDER"] = "fake"
 
-from app.core.config import settings
-from app.db.base import Base
-from app.db.session import engine, session_scope
-from app.rag import chain as rag_chain
-from app.rag import prompts
+from app.core.config import settings  # noqa: E402
+from app.db.base import Base  # noqa: E402
+from app.db.session import engine, session_scope  # noqa: E402
+from app.rag import chain as rag_chain  # noqa: E402
+from app.rag import prompts  # noqa: E402
 
 if engine.url.drivername.startswith("sqlite"):
     Base.metadata.create_all(bind=engine)
@@ -52,11 +52,16 @@ def main():
     print("=" * 60)
 
     # 1. Configuration check
-    print(f"\n1. Settings & Environment Check:")
+    print("\n1. Settings & Environment Check:")
     print(f"   • Tracing Enabled: {settings.LANGCHAIN_TRACING_V2}")
     print(f"   • Project Name:    {settings.LANGCHAIN_PROJECT}")
     print(f"   • Prompt Version:  {prompts.get_prompt_version()}")
-    print(f"   • API Key Configured: {'Yes (ends in ' + settings.LANGCHAIN_API_KEY[-4:] + ')' if settings.LANGCHAIN_API_KEY else 'No'}")
+    masked_key = (
+        f"Yes (ends in {settings.LANGCHAIN_API_KEY[-4:]})"
+        if settings.LANGCHAIN_API_KEY
+        else "No"
+    )
+    print(f"   • API Key Configured: {masked_key}")
     print(f"   • os.environ TRACING: {os.environ.get('LANGCHAIN_TRACING_V2')}")
 
     if not settings.LANGCHAIN_TRACING_V2 or not settings.LANGCHAIN_API_KEY:
@@ -64,7 +69,7 @@ def main():
         sys.exit(1)
 
     # 2. Client Authentication Check
-    print(f"\n2. Connecting to LangSmith Cloud API...")
+    print("\n2. Connecting to LangSmith Cloud API...")
     try:
         from langsmith import Client
 
@@ -75,7 +80,7 @@ def main():
             project_extra={"description": "Nimbus SaaS RAG Traces & Versioning"},
             upsert=True,
         )
-        print(f"   ✅ Successfully connected to LangSmith!")
+        print("   ✅ Successfully connected to LangSmith!")
         print(f"   • Project ID: {project.id}")
         print(f"   • Project Name: {project.name}")
     except Exception as e:
@@ -83,7 +88,7 @@ def main():
         sys.exit(1)
 
     # 3. Emit a Test Run through the RAG Workflow
-    print(f"\n3. Running Test RAG Query through LangGraph with Versioning...")
+    print("\n3. Running Test RAG Query through LangGraph with Versioning...")
     dummy_tenant_id = uuid.uuid4()
     dummy_tenant = MockTenant(id=dummy_tenant_id, name="Acme Corp Demo")
     dummy_question = "What are the workspace member roles and permission limits?"
@@ -135,7 +140,7 @@ def main():
                 allow_web_search=False,
                 conversation_id=uuid.uuid4(),
             )
-            print(f"   ✅ RAG workflow executed successfully!")
+            print("   ✅ RAG workflow executed successfully!")
             print(f"   • Answer Preview: {result.answer[:80]}...")
             print(f"   • Source Type:    {result.source_type}")
             print(f"   • Latency:        {result.latency_ms} ms")
@@ -144,7 +149,7 @@ def main():
         sys.exit(1)
 
     # 4. Flush and fetch recent trace from LangSmith
-    print(f"\n4. Fetching Recent Trace from LangSmith...")
+    print("\n4. Fetching Recent Trace from LangSmith...")
     try:
         import time
 
@@ -163,15 +168,18 @@ def main():
             print(f"   ✅ Found {len(runs)} traced step(s) in LangSmith!")
             print(f"   • Step/Run:        {display_run.name}")
             print(f"   • Run ID:          {display_run.id}")
-            print(f"   • Prompt Version:  {display_run.extra.get('metadata', {}).get('prompt_version', '1.0.0')}")
+            prompt_ver = display_run.extra.get("metadata", {}).get(
+                "prompt_version", "1.0.0"
+            )
+            print(f"   • Prompt Version:  {prompt_ver}")
             print(f"   • Tags:            {display_run.tags}")
             print(
                 f"\n🔗 Open Your LangSmith Dashboard to View Traces & Versions:\n"
                 f"   👉 https://smith.langchain.com/o/default/projects/p/{project.id}"
             )
         else:
-            print(f"   ⚠️ Trace dispatched (may take a few seconds to appear in dashboard).")
-            print(f"\n🔗 View in LangSmith Dashboard:\n   👉 https://smith.langchain.com")
+            print("   ⚠️ Trace dispatched (may take a few seconds to appear in dashboard).")
+            print("\n🔗 View in LangSmith Dashboard:\n   👉 https://smith.langchain.com")
     except Exception as e:
         print(f"   ⚠️ Note: {e}")
 

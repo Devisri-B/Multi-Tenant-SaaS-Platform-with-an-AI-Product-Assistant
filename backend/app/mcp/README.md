@@ -7,41 +7,27 @@ A production-grade implementation of the **Model Context Protocol (MCP)** exposi
 ## Architecture Overview
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "16px"}}}%%
 flowchart LR
-    subgraph Host ["1. Agent & Host Layer"]
-        Agent["Autonomous Agent<br/>(app/mcp/agent.py)"]
-        Claude["Claude Desktop / Cursor<br/>(External AI Host)"]
-    end
+    C["AI client<br/>Claude Desktop / agent.py"] <-- "JSON-RPC<br/>over stdio" --> S["FastMCP server"]
+    S --> G{{"Tenant<br/>allowed?"}}
+    G -- no --> E(["TenantNotFound"])
+    G -- yes --> T["3 tools<br/>list_workspaces<br/>semantic_search_chunks<br/>self_rag_query"]
+    T --> P["Self-RAG pipeline"]
+    T --> DB[("Postgres + pgvector")]
+    P --> DB
 
-    subgraph MCP ["2. Model Context Protocol (JSON-RPC)"]
-        Stdio["Standard I/O (stdio) Transport"]
-        Discovery["Dynamic Tool Discovery<br/>(list_tools)"]
-    end
-
-    subgraph Server ["3. FastMCP Server (app/mcp/server.py)"]
-        T1["list_workspaces"]
-        T2["semantic_search_chunks"]
-        T3["self_rag_query"]
-    end
-
-    subgraph Pipeline ["4. Self-RAG Pipeline (app/rag/)"]
-        Graph["LangGraph Workflow"]
-        PGVector["pgvector (SentenceTransformers 384-dim)"]
-        LLM["Anthropic Claude (SyncAnthropic)"]
-        Graders["DeBERTa-v3 NLI & Relevance Graders"]
-        Web["DuckDuckGo / Tavily Web Fallback"]
-    end
-
-    Agent <--> Stdio
-    Claude <--> Stdio
-    Stdio <--> Server
-    Server --> T1 & T2 & T3
-    T2 --> PGVector
-    T3 --> Graph
-    Graph --> PGVector & LLM & Graders & Web
+    classDef io fill:#1e3a8a,stroke:#1e3a8a,color:#ffffff
+    classDef step fill:#ffffff,stroke:#475569,color:#0f172a,stroke-width:1.5px
+    classDef guard fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:2px
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#450a0a,stroke-width:2px
+    classDef data fill:#dcfce7,stroke:#15803d,color:#052e16,stroke-width:2px
+    class C io
+    class S,T,P step
+    class G guard
+    class E bad
+    class DB data
 ```
-
----
 
 ## Exposed MCP Tools
 

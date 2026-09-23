@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import urllib.parse
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
@@ -109,10 +110,9 @@ class DuckDuckGoWebSearch(WebSearchProvider):
 
     def _search_lite(self, query: str, max_results: int = 4) -> list[WebSearchResult]:
         """Fetch search results from DuckDuckGo Lite HTML interface."""
-        import urllib.request
-        from bs4 import BeautifulSoup
-
         try:
+            from bs4 import BeautifulSoup
+
             url = "https://lite.duckduckgo.com/lite/"
             data = urllib.parse.urlencode({"q": query}).encode("utf-8")
             req = urllib.request.Request(
@@ -135,7 +135,7 @@ class DuckDuckGoWebSearch(WebSearchProvider):
             snippets = soup.find_all("td", class_="result-snippet")
 
             results: list[WebSearchResult] = []
-            for link_el, snip_el in zip(links, snippets):
+            for link_el, snip_el in zip(links, snippets, strict=False):
                 href = link_el.get("href", "").strip()
                 if "uddg=" in href:
                     parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)

@@ -1,212 +1,125 @@
 # Nimbus - Multi-Tenant SaaS Platform with an Adaptive AI Assistant
 
-A production-grade SaaS platform featuring isolated customer workspaces served
-from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
-powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
+A production-grade SaaS platform featuring isolated customer workspaces served from a single shared PostgreSQL schema, paired with an **adaptive Self-RAG AI assistant** powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React / TypeScript**.
 
-**Stack** - Python | FastAPI | LangGraph | Anthropic Claude (SyncAnthropic) | FastMCP | SentenceTransformers | PostgreSQL (`pgvector`) | React 18 | TypeScript | Vite | Docker | GitHub Actions
+**Stack**: Python | FastAPI | LangGraph | Anthropic Claude | FastMCP | SentenceTransformers | DeBERTa-v3 | PostgreSQL (`pgvector`) | React 18 | TypeScript | Vite | Docker
 
 > **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
 > **Seeded Demo Account**: Email: `owner@nimbus.dev` | Password: `DemoPassw0rd`
 
 ---
 
-## Architecture Overview: Adaptive Self-RAG Pipeline
+## Key Highlights
+
+- **Shared-Schema Multi-Tenancy with PostgreSQL RLS**: Every tenant's data is strictly partitioned using PostgreSQL Row-Level Security (`FORCE ROW LEVEL SECURITY`) and repository-level scoping.
+- **Adaptive Self-RAG Knowledge Pipeline**: LangGraph state graph combining dense vector search (`pgvector`), sparse lexical search (PostgreSQL FTS), cross-encoder reranking, and local DeBERTa-v3 NLI anti-hallucination verification.
+- **Dynamic Online Search Fallback**: Automatically evaluates context relevance and routes out-of-scope queries to external web search (DuckDuckGo / Tavily) with external citations.
+- **Model Context Protocol (FastMCP) Integration**: Built-in FastMCP server (`stdio`) and autonomous tool-calling agent enabling Claude Desktop and Cursor to interface directly with tenant knowledge bases.
+- **Zero-Cost Local & CI Testing**: Pluggable provider seams allow running all 220+ tests against SQLite and deterministic mock models with zero API costs and no external dependencies.
+
+---
+
+## Architecture & Engineering Design
+
+### 1. Adaptive Self-RAG Pipeline
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "16px"}}}%%
 flowchart LR
-    %% Adaptive Self-RAG Architecture (Landscape View)
+    Q(["User question"]) --> R["Rewrite query<br/>using chat memory"]
+    R --> H["Hybrid search + rerank<br/>(this tenant only)"]
+    H --> G1{{"Relevant<br/>docs?"}}
+    G1 -- yes --> GEN["Generate answer"]
+    GEN --> G2{{"Grounded?<br/>(NLI check)"}}
+    G2 -- yes --> A1(["Answer +<br/>citations"])
+    G2 -- "no, retry ≤ 2" --> GEN
+    G2 -- "still no" --> W["Web search"]
+    G1 -- no --> W
+    W --> A2(["Web answer or<br/>'I don't know'"])
 
-    subgraph InputStage ["1. Query & Contextualization"]
-        direction TB
-        UserQuery(["User Question"])
-        Memory["Sliding Window History<br/>(Last 6 Turns)"]
-        Rewrite["Query Reformulator<br/>(Coreference Resolution)"]
-        UserQuery --> Rewrite
-        Memory --> Rewrite
-    end
-
-    subgraph RetrievalStage ["2. Hybrid Retrieval & Reranking"]
-        direction TB
-        subgraph ConcurrentRetrieval ["Tenant-Scoped Search"]
-            direction TB
-            DenseSearch["Dense Vector Search<br/>(pgvector Cosine Sim)"]
-            SparseSearch["Sparse Lexical Search<br/>(PostgreSQL FTS / BM25)"]
-        end
-        RRF["Reciprocal Rank Fusion<br/>(Score Fusion: k=60)"]
-        Reranker["Cross-Encoder Reranker<br/>(ms-marco-MiniLM-L-6-v2)"]
-        
-        DenseSearch --> RRF
-        SparseSearch --> RRF
-        RRF --> Reranker
-    end
-
-    subgraph RoutingStage ["3. Relevance Evaluation"]
-        direction TB
-        DocGrader{"Relevance Filter<br/>Score >= 0.40?"}
-        WebSearch["Dynamic Web Search<br/>(DuckDuckGo / Tavily)"]
-    end
-
-    subgraph GenerationStage ["4. Self-RAG Verification Loop"]
-        direction TB
-        Generator["Contextual Generator<br/>(Claude Haiku / Strict Prompt)"]
-        NLIEval{"DeBERTa-v3 NLI<br/>Entailment Check"}
-        StrictRetry["Anti-Hallucination<br/>Regeneration Prompt"]
-        
-        Generator --> NLIEval
-        NLIEval -- "Contradiction / Hallucination<br/>(Retry <= 2)" --> StrictRetry
-        StrictRetry --> Generator
-    end
-
-    subgraph OutputStage ["5. Observability & Delivery"]
-        direction TB
-        FinalAnswer(["Verified Response<br/>+ Scored Citations [1][2]"])
-        Telemetry["LangSmith Observability<br/>(Spans, Traces, Prompt v1.0.0)"]
-    end
-
-    %% Cross-stage transitions (Left to Right)
-    Rewrite -->|"Standalone Query"| ConcurrentRetrieval
-    Reranker -->|"Top-K Candidates"| DocGrader
-    DocGrader -- "Relevant Chunks" --> Generator
-    DocGrader -- "Out of Scope / Low Score" --> WebSearch
-    WebSearch --> FinalAnswer
-    NLIEval -- "Entailment Score >= 0.50" --> FinalAnswer
-    FinalAnswer -. "Live Telemetry" .-> Telemetry
-
-    %% Styling
-    classDef startEnd fill:#0284c7,stroke:#0369a1,color:#ffffff,stroke-width:2px;
-    classDef step fill:#f8fafc,stroke:#64748b,color:#0f172a,stroke-width:1.5px;
-    classDef decision fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px;
-    classDef retry fill:#fee2e2,stroke:#dc2626,color:#991b1b,stroke-width:1.5px;
-    classDef obs fill:#f0fdf4,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
-
-    class UserQuery,FinalAnswer startEnd;
-    class Memory,Rewrite,DenseSearch,SparseSearch,RRF,Reranker,Generator,WebSearch step;
-    class DocGrader,NLIEval decision;
-    class StrictRetry retry;
-    class Telemetry obs;
+    classDef io fill:#1e3a8a,stroke:#1e3a8a,color:#ffffff
+    classDef step fill:#ffffff,stroke:#475569,color:#0f172a,stroke-width:1.5px
+    classDef guard fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:2px
+    classDef out fill:#bbf7d0,stroke:#15803d,color:#052e16,stroke-width:2px
+    class Q io
+    class R,H,GEN,W step
+    class G1,G2 guard
+    class A1,A2 out
 ```
 
+The RAG engine is implemented as an adaptive **LangGraph state graph**:
+- **Sliding-Window Memory & Reformulation**: Resolves pronouns and conversational coreferences across turns before retrieval.
+- **Tenant-Isolated Hybrid Search**: Executes dense vector cosine similarity (`pgvector`) concurrently with sparse lexical search (Postgres FTS / BM25), combined using Reciprocal Rank Fusion (RRF) and scored through a Cross-Encoder Reranker (`ms-marco-MiniLM-L-6-v2`).
+- **Local NLI Hallucination Verification**: Evaluates generated candidate answers against retrieved passages using a local DeBERTa-v3 cross-encoder (~20–40ms latency on CPU). If unsupported claims are detected, a self-correction loop regenerates the response with stricter constraints.
+- **Dynamic Web Routing**: If retrieved documents fail relevance grading (score < 0.40), the pipeline automatically routes to live web search to synthesize answers with verified web citations.
+
+### 2. Multi-Tenancy & Security Architecture
+
+- **PostgreSQL Row-Level Security (RLS)**: Every tenant-owned table carries a `tenant_id` foreign key. On PostgreSQL, RLS policies (`FORCE ROW LEVEL SECURITY` with `current_setting('app.tenant_id')::uuid`) are applied to `documents`, `document_chunks`, `conversations`, and `messages`. Even an arbitrary SQL injection (`OR 1=1`) cannot cross tenant boundaries.
+- **Authorization Lattice**: Roles form a cumulative lattice (`viewer < member < admin < owner`). Enforced via FastAPI dependency injection: `bearer token -> current_user -> tenant_context -> require_role(...)`. Requesting a workspace the user does not belong to yields `403 Forbidden`, while a non-existent workspace yields `404 Not Found`.
+- **Pluggable Provider Seams**: `app/rag/providers.py` abstracts LLM generation (`SyncAnthropic` or deterministic `fake`) and vector embeddings (`SentenceTransformers` or hash-based `fake`). This allows end-to-end ingestion, chunking, retrieval, and evaluation to run in CI with zero API keys.
+- **Dual Vector Portability**: Transparently executes native `<=>` cosine distance on PostgreSQL `pgvector` in production and in-Python cosine similarity over JSON arrays on SQLite for development and fast testing.
+
 ---
 
-## The AI Assistant: Adaptive LangGraph & Self-RAG
+## Model Context Protocol (MCP)
 
-The assistant uses an adaptive **LangGraph state graph** with **sliding window conversational memory**, **Self-RAG hallucination reduction**, and **dynamic online search fallback**:
-- **Sliding Window Conversation Memory**: Preserves context across multi-turn dialogues with automated conversational query reformulation and pronoun coreference resolution.
-- **Multi-Tenant Vector Search**: Answers grounded in tenant-isolated documentation chunks with similarity scores and excerpts.
-- **Local NLI Hallucination Verification (DeBERTa-v3)**: Evaluates candidate answers against retrieved context passages using local cross-encoder Natural Language Inference scoring on CPU (~20-40ms latency), calculating calibrated entailment probabilities and triggering strict regeneration loops when unsupported claims are detected.
-- **Dynamic Online Routing**: If workspace documents lack context or fail to resolve the query, the graph routes to online web search (DuckDuckGo / Tavily) to synthesize verified answers with external web citations.
+Nimbus exposes tenant knowledge to external AI agents and IDEs via a standardized **FastMCP Server** (`app.mcp.server`) and includes an **Autonomous Tool-Calling Agent** (`app.mcp.agent`).
 
-| Grounded Workspace Document Citations | Dynamic Online Search Fallback (Out-of-Scope) |
-| --- | --- |
-| ![The product assistant answering from workspace documents with scored citations](docs/screenshots/assistant.png) | ![The assistant dynamically routing to online search with external citations](docs/screenshots/assistant-web-search.png) |
-
----
-
-## Model Context Protocol (MCP) Server & Autonomous Agent
-
-Nimbus exposes its multi-tenant Self-RAG knowledge base to external AI tooling and desktop assistants via a standard **FastMCP Server** (`app.mcp.server`) and includes an **Autonomous Tool-Calling Agent** (`app.mcp.agent`) acting as an MCP client over standard I/O (`stdio`).
-
-### MCP Architecture: Autonomous Agent & FastMCP Server
+### MCP Architecture
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 45, "curve": "basis"}, "themeVariables": {"fontSize": "16px"}}}%%
 flowchart LR
-    %% Model Context Protocol (MCP) Architecture (Landscape Interview View)
+    C["AI client<br/>Claude Desktop / agent.py"] <-- "JSON-RPC<br/>over stdio" --> S["FastMCP server"]
+    S --> G{{"Tenant<br/>allowed?"}}
+    G -- no --> E(["TenantNotFound"])
+    G -- yes --> T["3 tools<br/>list_workspaces<br/>semantic_search_chunks<br/>self_rag_query"]
+    T --> P["Self-RAG pipeline"]
+    T --> DB[("Postgres + pgvector")]
+    P --> DB
 
-    subgraph Clients ["1. AI Host & Client Layer"]
-        direction TB
-        AgentCLI["Autonomous MCP Agent<br/>(app/mcp/agent.py)"]
-        IDE["Claude Desktop / Cursor<br/>(External AI Host)"]
-        ReActLoop["ReAct Reasoning Loop<br/>(Prompt -> Tool Use -> Synthesize)"]
-        AgentCLI --> ReActLoop
-        IDE --> ReActLoop
-    end
-
-    subgraph Protocol ["2. Protocol & Transport (JSON-RPC)"]
-        direction TB
-        StdioPipe["Bidirectional stdio Stream<br/>(Clean Subprocess Pipe)"]
-        Handshake["Dynamic Handshake<br/>(initialize + tools/list)"]
-        ToolCall["JSON-RPC Execution<br/>(tools/call)"]
-        StdioPipe --> Handshake
-        StdioPipe --> ToolCall
-    end
-
-    subgraph Server ["3. FastMCP Server & Tenancy Guard"]
-        direction TB
-        MCPEngine["FastMCP Server<br/>(app/mcp/server.py)"]
-        TenantGuard["Tenant Isolation Guard<br/>(MCP_ALLOWED_TENANT_IDS)"]
-        MCPEngine --> TenantGuard
-    end
-
-    subgraph Tools ["4. Exposed MCP Tool APIs"]
-        direction TB
-        T1["list_workspaces<br/>(Discover Active Tenants)"]
-        T2["semantic_search_chunks<br/>(Raw pgvector Vectors)"]
-        T3["self_rag_query<br/>(LangGraph Self-RAG Engine)"]
-    end
-
-    subgraph Backends ["5. Knowledge Plane & Observability"]
-        direction TB
-        PGVector[("PostgreSQL 16 (pgvector)<br/>Tenant-Isolated Chunks")]
-        LangGraphPipe["LangGraph Self-RAG<br/>(NLI Anti-Hallucination)"]
-        LangSmithTrace["LangSmith Tracing<br/>(@traceable Spans & Metrics)"]
-    end
-
-    %% Flow connections (Left to Right)
-    ReActLoop <-->|"stdio JSON-RPC"| StdioPipe
-    ToolCall -->|"Dispatch Tool Call"| MCPEngine
-    TenantGuard --> T1 & T2 & T3
-    
-    T1 -. "Tenant List JSON" .-> ReActLoop
-    T2 -->|"Vector Cosine Query"| PGVector
-    T3 -->|"Execute Adaptive Graph"| LangGraphPipe
-    LangGraphPipe --> PGVector
-    T3 -. "Telemetry Spans" .-> LangSmithTrace
-
-    %% Styling
-    classDef clientNode fill:#0284c7,stroke:#0369a1,color:#ffffff,stroke-width:2px;
-    classDef protoNode fill:#f1f5f9,stroke:#64748b,color:#0f172a,stroke-width:1.5px;
-    classDef serverNode fill:#ede7f6,stroke:#6d28d9,color:#3b0764,stroke-width:2px;
-    classDef toolNode fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
-    classDef dataNode fill:#f0fdf4,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
-
-    class AgentCLI,IDE,ReActLoop clientNode;
-    class StdioPipe,Handshake,ToolCall protoNode;
-    class MCPEngine,TenantGuard serverNode;
-    class T1,T2,T3 toolNode;
-    class PGVector,LangGraphPipe,LangSmithTrace dataNode;
+    classDef io fill:#1e3a8a,stroke:#1e3a8a,color:#ffffff
+    classDef step fill:#ffffff,stroke:#475569,color:#0f172a,stroke-width:1.5px
+    classDef guard fill:#fde68a,stroke:#b45309,color:#451a03,stroke-width:2px
+    classDef bad fill:#fee2e2,stroke:#b91c1c,color:#450a0a,stroke-width:2px
+    classDef data fill:#dcfce7,stroke:#15803d,color:#052e16,stroke-width:2px
+    class C io
+    class S,T,P step
+    class G guard
+    class E bad
+    class DB data
 ```
 
 ### Exposed MCP Tools
 
-The FastMCP server exposes three standardized tools via standard JSON-RPC:
-
 | Tool | Parameters | Description |
 | :--- | :--- | :--- |
-| `list_workspaces` | *(none)* | Discovers all active tenant workspaces (UUIDs, names, slugs, subscription tiers) so external agents can dynamically target tenants without hardcoded IDs. |
-| `semantic_search_chunks` | `query: str`, `tenant_id?: str`, `top_k?: int` | Performs direct semantic vector retrieval against PostgreSQL `pgvector` without LLM answer generation. Returns chunk excerpts, document titles, and cosine similarity scores. |
-| `self_rag_query` | `question: str`, `tenant_id?: str`, `allow_web_search?: bool`, `top_k?: int` | Executes the complete LangGraph Self-RAG workflow: query reformulation, document grading, anti-hallucination verification, iterative self-correction, and web search fallback. |
+| `list_workspaces` | *(none)* | Discovers active tenant workspaces (UUIDs, names, slugs, subscription tiers) for dynamic target selection. |
+| `semantic_search_chunks` | `query: str`, `tenant_id?: str`, `top_k?: int` | Direct vector retrieval against `pgvector` returning chunks, titles, and cosine similarity scores without LLM generation. |
+| `self_rag_query` | `question: str`, `tenant_id?: str`, `allow_web_search?: bool`, `top_k?: int` | Executes the complete LangGraph Self-RAG workflow: query reformulation, document grading, anti-hallucination NLI checks, and web search fallback. |
 
-### Running the Autonomous Agent (MCP Client)
+### Running the Autonomous Agent CLI
 
-The autonomous agent automatically launches the MCP server as a subprocess over `stdio`, dynamically inspects available tools, and runs an autonomous reasoning and tool-calling loop:
+The agent launches the MCP server as a subprocess over `stdio`, discovers available tools, and runs an autonomous ReAct loop:
 
 ```bash
-# 1. Offline demonstration mode (no API key required, verifies MCP handshake & tool execution):
 cd backend
+
+# Offline demonstration (verifies MCP handshake & tool execution without API keys):
 python -m app.mcp.agent --offline
 
-# 2. Ask a specific query in offline mode:
+# Ask a specific question offline:
 python -m app.mcp.agent --question "What is the refund policy?" --offline
 
-# 3. Live LLM mode: Claude tool-calling loop (AsyncAnthropic) over MCP:
+# Live Claude tool-calling loop (AsyncAnthropic) over MCP:
 export ANTHROPIC_API_KEY="sk-ant-..."
 python -m app.mcp.agent --question "Explain the document upload limits."
 ```
 
-### IDE Integration (Claude Desktop & Cursor)
+### Desktop & IDE Integration (Claude Desktop / Cursor)
 
-Connect Claude Desktop or Cursor directly to your private tenant knowledge base by adding the server configuration to `claude_desktop_config.json`:
+Add the server definition to `claude_desktop_config.json`:
 
 ```json
 {
@@ -224,191 +137,113 @@ Connect Claude Desktop or Cursor directly to your private tenant knowledge base 
 }
 ```
 
-`MCP_ALLOWED_TENANT_IDS` scopes the server to specific workspaces: `list_workspaces` only returns them, and a `tenant_id` outside the list is reported as `TenantNotFound` (indistinguishable from a nonexistent one) before any retrieval runs. Leave it empty only for a local stdio server.
+> **Note**: `MCP_ALLOWED_TENANT_IDS` scopes access to explicit workspaces. Requests for unauthorized workspaces return `TenantNotFound` before any retrieval occurs.
 
 ---
 
-## Document Ingestion, Chunk Inspection & Live Editor
+## Product Tour & Visual Walkthrough
 
-Uploads are chunked, embedded and indexed on arrival (`pending -> processing -> indexed`). Users can inspect individual vector chunks, view full source text, and live-edit documentation with automatic re-indexing.
+### 1. AI Assistant & Dynamic Fallback
+| Grounded Workspace Citations | Dynamic Online Search Fallback |
+| :---: | :---: |
+| ![The product assistant answering from workspace documents with scored citations](docs/screenshots/assistant.png) | ![The assistant dynamically routing to online search with external citations](docs/screenshots/assistant-web-search.png) |
 
-![The documentation page listing indexed documents with chunk counts and sizes](docs/screenshots/documentation.png)
+### 2. Knowledge Base, Chunk Inspector & Live Editor
+Uploads are automatically chunked, embedded, and indexed (`pending -> processing -> indexed`). Users can inspect individual vector embeddings, read raw source text, and live-edit documents with automatic re-indexing.
 
-### Document Viewer & Live Editor Modal
+| Document Indexing View | Vector Chunk Inspector | Live Markdown Editor & Re-indexer |
+| :---: | :---: | :---: |
+| ![Documentation view](docs/screenshots/documentation.png) | ![Vector chunk inspection](docs/screenshots/edit-document-chunks.png) | ![Live editor and reindexing](docs/screenshots/edit-document-reindex.png) |
 
-| 1. Full Document Text | 2. Vector Chunk Inspector | 3. Live Editor & Reindexer |
-| --- | --- | --- |
-| ![Full document text view](docs/screenshots/edit-document-text.png) | ![Vector chunk inspection](docs/screenshots/edit-document-chunks.png) | ![Live markdown editor and reindexing](docs/screenshots/edit-document-reindex.png) |
-
----
-
-## Workspace Overview
-
-Usage counters for the selected tenant: members, documents, how many are indexed, chunks embedded, and conversations held.
-
-![Workspace overview showing member, document, chunk and conversation counts](docs/screenshots/overview.png)
-
----
-
-## Members, RBAC & Settings
-
-Roles form a cumulative lattice (`viewer < member < admin < owner`). Settings allows tenant creation, workspace renaming, appearance theme selection (Bright / Dark Mode), and credentials management.
-
-| Role-Based Access Control | Workspace Settings & Bright/Dark Mode |
-| --- | --- |
-| ![Member list with role and status columns and an invite form](docs/screenshots/members.png) | ![Settings page with workspace rename, workspace creation and appearance theme switcher](docs/screenshots/settings.png) |
+### 3. Multi-Tenant Governance & Administration
+| Workspace Metrics & Usage Counters | Role-Based Access Control (RBAC) | Appearance & Workspace Settings |
+| :---: | :---: | :---: |
+| ![Workspace overview](docs/screenshots/overview.png) | ![Member list and roles](docs/screenshots/members.png) | ![Settings and theme switcher](docs/screenshots/settings.png) |
 
 ---
 
-## Why it is built this way
+## Quick Start
 
-**Shared-schema multi-tenancy with PostgreSQL RLS.** Every tenant-owned table
-carries a `tenant_id` foreign key. All reads and writes go through `TenantScopedRepository`
-(`backend/app/services/base.py`), which applies `WHERE tenant_id = :tenant_id`
-and refuses to persist or delete a row belonging to another tenant. On PostgreSQL,
-this is backed by database-level Row Level Security (`FORCE ROW LEVEL SECURITY` with
-`current_setting('app.tenant_id')::uuid`) across `documents`, `document_chunks`,
-`conversations`, and `messages`, ensuring that even an arbitrary SQL injection
-(`OR 1=1`) cannot cross tenant boundaries. Retrieval is filtered inside SQL, so the
-assistant physically cannot quote another workspace's documents - `tests/test_assistant.py`
-and `tests/test_postgres_integration.py` assert exactly that.
-
-**Authorization as a dependency chain.** `bearer token -> current_user ->
-tenant_context -> require_role(...)`. A handler never sees a tenant id from the
-client that has not already been checked against the caller's memberships.
-Requesting a workspace you are not a member of returns `403`, not `404`, and a
-non-existent workspace returns `404` - the split is deliberate and tested.
-
-**Provider seam for LLM & Embeddings.** `app/rag/providers.py` defines
-`EmbeddingProvider` and `ChatProvider`. Production binds Chat to Anthropic Claude
-(via `SyncAnthropic`) and Embeddings to local `SentenceTransformers`
-(`all-MiniLM-L6-v2`); `LLM_PROVIDER=fake` binds them to a deterministic hashed
-bag-of-words embedder and an extractive generator. The whole pipeline
-(chunking, embedding, retrieval, prompt assembly, citation building) runs
-identically in CI with zero external API keys and zero cost.
-
-**Portable column types.** `Vector` is a real `pgvector` column on Postgres and
-a JSON array on SQLite, and the retriever pushes the nearest-neighbour search
-into `pgvector`'s `<=>` operator when available and falls back to an in-Python
-cosine scan otherwise. One set of models, two environments, no test doubles for
-the database.
-
----
-
-## Quick start
-
-### Docker (everything)
+### Option A: Docker Compose (Full Stack)
 
 ```bash
-cp .env.example .env          # set ANTHROPIC_API_KEY, or leave LLM_PROVIDER=fake
+# 1. Clone repository and set environment variables
+cp .env.example .env
+
+# 2. Launch PostgreSQL (pgvector), FastAPI backend, and React frontend
 docker compose up --build
 ```
 
-| Service | URL |
-| --- | --- |
-| Frontend | http://localhost:8080 |
-| API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
+| Service | Endpoint | Description |
+| :--- | :--- | :--- |
+| **Frontend** | [http://localhost:8080](http://localhost:8080) | React 18 / TypeScript SPA |
+| **API Backend** | [http://localhost:8000](http://localhost:8000) | FastAPI REST API |
+| **Interactive Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | Swagger UI for all REST endpoints |
 
-### Local development
+*Default Seeded Login*: `owner@nimbus.dev` / `DemoPassw0rd`
 
-```bash
-make install      # backend venv + npm install
-make migrate      # alembic upgrade head
-make seed         # demo workspaces, users and docs
-make run          # API on :8000
-make web          # Vite dev server on :5173
-```
-
-Seeded login: `owner@nimbus.dev` / `DemoPassw0rd`.
-
-### Tests
+### Option B: Local Development
 
 ```bash
-make test         # 160 tests, SQLite in-memory, no external services
-make lint
+make install      # Creates backend venv, installs dependencies & frontend packages
+make migrate      # Runs Alembic migrations (alembic upgrade head)
+make seed         # Seeds demo workspaces, users, and documents
+make run          # Runs FastAPI on :8000 with hot reload
+make web          # Runs Vite dev server on :5173
+```
+
+### Automated Testing & Quality Checks
+
+```bash
+make test         # Runs 220+ backend unit and integration tests (SQLite in-memory, no API keys needed)
+make lint         # Lints Python (Ruff) and TypeScript / React (ESLint)
+make format       # Auto-formats backend code with Ruff
 ```
 
 ---
 
-## Layout
+## Project Structure
 
 ```
-backend/
-  app/
-    core/         config, security (bcrypt + JWT), logging, error taxonomy
-    db/           engine, session, portable GUID/JSON/Vector column types
-    models/       Tenant, User, Membership, Document, DocumentChunk,
-                  Conversation, Message, AuditLog
-    schemas/      Pydantic request/response contracts
-    api/          dependencies (auth, tenancy, RBAC), middleware, v1 routers
-    services/     tenant-scoped repositories and domain logic
-    rag/          chunking, memory, web search, graph, ingestion, retrieval, answering chain, DeBERTa NLI, SentenceTransformers
-    mcp/          FastMCP server (stdio), autonomous tool-calling client agent
-  alembic/        three migrations, including the pgvector ivfflat index
-  tests/          160 tests across auth, tenancy, RBAC, LangGraph Self-RAG, MCP, DeBERTa NLI, Claude, SentenceTransformers, memory and isolation
-frontend/
-  src/
-    api/          typed fetch client with one-shot token refresh
-    context/      session + active-workspace state
-    components/   layout, route guards, UI primitives
-    pages/        login, register, overview, assistant, documents, members,
-                  settings
+.
+├── backend/
+│   ├── alembic/          # 6 database migrations (initial schema, pgvector, conversations, RLS, telemetry, FTS)
+│   ├── app/
+│   │   ├── api/          # Dependencies (auth, tenancy, RBAC), middleware, and v1 routers
+│   │   ├── core/         # Config, security (bcrypt + JWT), logging, error taxonomy
+│   │   ├── db/           # Session management and portable column types (Vector, GUID)
+│   │   ├── mcp/          # FastMCP stdio server and autonomous client agent
+│   │   ├── models/       # SQLAlchemy models (Tenant, User, Document, DocumentChunk, Message, etc.)
+│   │   ├── rag/          # LangGraph state graph, DeBERTa NLI, chunking, hybrid retrieval, web search
+│   │   ├── schemas/      # Pydantic request and response schemas
+│   │   └── services/     # Tenant-scoped repositories and domain logic
+│   └── tests/            # 220+ tests covering auth, RLS, Self-RAG, MCP, NLI, and tenancy
+├── frontend/
+│   └── src/
+│       ├── api/          # Typed API fetch client with automatic token refresh
+│       ├── components/   # Layout, navigation, modals, and route guards
+│       ├── context/      # Auth session and active workspace state providers
+│       └── pages/        # Overview, Assistant, Documents, Members, Settings, Auth
+└── docs/                 # Architectural specifications, deep dives, and screenshots
 ```
 
 ---
 
-## API surface
+## Configuration Reference
 
-| Method | Path | Minimum role |
-| --- | --- | --- |
-| `POST` | `/api/v1/auth/register` | - |
-| `POST` | `/api/v1/auth/login` | - |
-| `POST` | `/api/v1/auth/refresh` | - |
-| `GET` | `/api/v1/auth/me` | authenticated |
-| `POST` | `/api/v1/auth/password` | authenticated |
-| `GET` `POST` | `/api/v1/workspaces` | authenticated |
-| `GET` | `/api/v1/workspaces/{id}` | viewer |
-| `PATCH` | `/api/v1/workspaces/{id}` | admin |
-| `DELETE` | `/api/v1/workspaces/{id}` | owner |
-| `GET` | `/api/v1/workspaces/{id}/stats` | viewer |
-| `GET` | `/api/v1/workspaces/{id}/members` | viewer |
-| `POST` | `/api/v1/workspaces/{id}/members` | admin |
-| `PATCH` `DELETE` | `/api/v1/workspaces/{id}/members/{mid}` | admin |
-| `GET` | `/api/v1/workspaces/{id}/documents` | viewer |
-| `POST` | `/api/v1/workspaces/{id}/documents` | member |
-| `POST` | `/api/v1/workspaces/{id}/documents/upload` | member |
-| `POST` | `/api/v1/workspaces/{id}/documents/{did}/reindex` | member |
-| `DELETE` | `/api/v1/workspaces/{id}/documents/{did}` | member |
-| `POST` | `/api/v1/workspaces/{id}/assistant/ask` | viewer |
-| `POST` | `/api/v1/workspaces/{id}/assistant/search` | viewer |
-| `GET` | `/api/v1/workspaces/{id}/assistant/conversations` | viewer |
+Key environment variables from [`.env.example`](.env.example):
 
-The active workspace can be supplied either in the path or via an
-`X-Workspace-Id` header; the frontend uses the header.
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `SECRET_KEY` | *(dev placeholder)* | JWT signing secret (**must** be set in production) |
+| `DATABASE_URL` | `postgresql+psycopg://...` | Connection URI for PostgreSQL with `pgvector` |
+| `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic) or `fake` (deterministic mock) |
+| `ANTHROPIC_API_KEY` | *(empty)* | Required when `LLM_PROVIDER=anthropic` |
+| `ANTHROPIC_CHAT_MODEL`| `claude-haiku-4-5` | Model checkpoint for answer synthesis |
+| `EMBEDDING_PROVIDER` | `sentence_transformers`| `sentence_transformers` (local embeddings) or `fake` |
+| `HALLUCINATION_PROVIDER`| `deberta` | `deberta` (local DeBERTa-v3 cross-encoder), `llm`, or `fake` |
+| `NLI_ENTAILMENT_THRESHOLD`| `0.5` | Minimum entailment probability required for factual grounding |
+| `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.40` | Retrieval candidate count and minimum similarity score threshold |
+| `MCP_ALLOWED_TENANT_IDS` | *(empty = all)* | Comma-separated workspace UUIDs permitted for MCP client queries |
 
----
-
-## Configuration
-
-See `.env.example` for the full list. The ones that matter most:
-
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `SECRET_KEY` | dev placeholder | **Must** be replaced in production |
-| `DATABASE_URL` | assembled from `POSTGRES_*` | Overrides the parts |
-| `LLM_PROVIDER` | `anthropic` | `anthropic` (Claude via SyncAnthropic) or `fake` |
-| `ANTHROPIC_API_KEY` | - | Required when `LLM_PROVIDER=anthropic` |
-| `ANTHROPIC_CHAT_MODEL` | `claude-haiku-4-5` | Anthropic Claude model checkpoint |
-| `EMBEDDING_PROVIDER` | `sentence_transformers` | `sentence_transformers` (local embeddings) or `fake` |
-| `SENTENCE_TRANSFORMER_MODEL` | `all-MiniLM-L6-v2` | Local Hugging Face sentence embedding model |
-| `EMBEDDING_DIMENSIONS` | `384` | Embedding vector width |
-| `HALLUCINATION_PROVIDER` | `deberta` | `deberta` (local DeBERTa-v3 cross-encoder), `llm`, or `fake` |
-| `DEBERTA_MODEL_NAME` | `cross-encoder/nli-deberta-v3-small` | Hugging Face cross-encoder model checkpoint |
-| `NLI_ENTAILMENT_THRESHOLD` | `0.5` | Minimum entailment probability for factual grounding |
-| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `250` / `40` | Tokens (token-based via `count_tokens`) |
-| `RAG_TOP_K` / `RAG_MIN_SCORE` | `5` / `0.40` | Retrieval budget and tuned cosine similarity floor |
-| `MCP_ALLOWED_TENANT_IDS` | *(empty = all)* | Comma-separated workspace UUIDs the MCP server may expose; disallowed tenants are reported as not found |
-
-Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-[`docs/RAG.md`](docs/RAG.md).
+Further technical reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | [`docs/RAG.md`](docs/RAG.md).
