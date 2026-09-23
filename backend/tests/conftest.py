@@ -18,6 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("LLM_PROVIDER", "fake")
+os.environ.setdefault("WEB_SEARCH_PROVIDER", "fake")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-used-in-production")
 os.environ.setdefault("EMBEDDING_DIMENSIONS", "128")
 os.environ.setdefault("RAG_MIN_SCORE", "0.0")

@@ -4,78 +4,87 @@ A production-grade SaaS platform featuring isolated customer workspaces served
 from a single shared Postgres schema, paired with an **adaptive Self-RAG AI assistant**
 powered by **LangGraph**, **FastAPI**, **PostgreSQL (`pgvector`)**, and **React/TypeScript**.
 
-**Stack** - Python | FastAPI | LangGraph | Anthropic Claude (SyncAnthropic) | FastMCP | SentenceTransformers | PostgreSQL (`pgvector`) | SQLAlchemy 2.0 | Alembic | React 18 | TypeScript | Vite | Docker | GitHub Actions
+**Stack** - Python | FastAPI | LangGraph | Anthropic Claude (SyncAnthropic) | FastMCP | SentenceTransformers | PostgreSQL (`pgvector`) | React 18 | TypeScript | Vite | Docker | GitHub Actions
 
 > **Live Demo**: [https://multi-tenant-saas-platform-with-an-ai.onrender.com](https://multi-tenant-saas-platform-with-an-ai.onrender.com)  
 > **Seeded Demo Account**: Email: `owner@nimbus.dev` | Password: `DemoPassw0rd`
 
 ---
 
-## Architecture Overview
+## Architecture Overview: Adaptive Self-RAG Pipeline
 
 ```mermaid
-flowchart TB
-    subgraph Clients ["1. Client & Host Layer"]
-        direction LR
-        SPA["React 18 SPA<br/>(Vite / TS / Theme Switcher)"]
-        IDE["Claude Desktop / Cursor<br/>(External AI Host)"]
-        AgentCLI["Autonomous MCP Agent<br/>(Local Reasoning CLI)"]
-    end
+flowchart LR
+    %% Adaptive Self-RAG Architecture (Landscape View)
 
-    subgraph Gateway ["2. FastAPI Gateway & Control Plane"]
+    subgraph InputStage ["1. Query & Contextualization"]
         direction TB
-        MW["Middleware Pipeline<br/>(Security Headers / Request Context / CORS)"]
-        AuthTenancy["Auth & Tenancy Guard<br/>(JWT Bearer / Tenant Context / RBAC Lattice)"]
-        REST["REST API Endpoints<br/>(/workspaces /documents /assistant)"]
-        FastMCP["FastMCP Server (JSON-RPC)<br/>(list_workspaces / semantic_search / self_rag_query)"]
+        UserQuery(["User Question"])
+        Memory["Sliding Window History<br/>(Last 6 Turns)"]
+        Rewrite["Query Reformulator<br/>(Coreference Resolution)"]
+        UserQuery --> Rewrite
+        Memory --> Rewrite
     end
 
-    subgraph DataPlane ["3. Multi-Tenant Storage Layer (PostgreSQL 16)"]
+    subgraph RetrievalStage ["2. Hybrid Retrieval & Reranking"]
         direction TB
-        Repo["TenantScopedRepository<br/>(Mandatory WHERE tenant_id = :id)"]
-        RelationalDB[("Relational Data<br/>Tenants / Users / Memberships<br/>Conversations / AuditLogs")]
-        PGVectorDB[("Vector Storage (pgvector)<br/>Document Chunks (384-dim)<br/>ivfflat Cosine Index")]
+        subgraph ConcurrentRetrieval ["Tenant-Scoped Search"]
+            direction TB
+            DenseSearch["Dense Vector Search<br/>(pgvector Cosine Sim)"]
+            SparseSearch["Sparse Lexical Search<br/>(PostgreSQL FTS / BM25)"]
+        end
+        RRF["Reciprocal Rank Fusion<br/>(Score Fusion: k=60)"]
+        Reranker["Cross-Encoder Reranker<br/>(ms-marco-MiniLM-L-6-v2)"]
+        
+        DenseSearch --> RRF
+        SparseSearch --> RRF
+        RRF --> Reranker
     end
 
-    subgraph RAGWorkflow ["4. Adaptive Self-RAG Engine (LangGraph)"]
+    subgraph RoutingStage ["3. Relevance Evaluation"]
         direction TB
-        Memory["Sliding Window Memory<br/>(Coreference Reformulator)"]
-        Retriever["pgvector Retrieval<br/>(Cosine Similarity Threshold 0.40)"]
-        DocGrader{"Document Grader<br/>(Relevance Filter)"}
-        Generator["Contextual Generator<br/>(Anthropic Claude Haiku 4.5)"]
-        HallucinationGrader{"Hallucination Reductor<br/>(DeBERTa-v3 NLI Entailment)"}
-        WebSearch["Dynamic Web Fallback<br/>(DuckDuckGo / Tavily Citations)"]
-        FinalAnswer["Verified Response + Citations"]
+        DocGrader{"Relevance Filter<br/>Score >= 0.40?"}
+        WebSearch["Dynamic Web Search<br/>(DuckDuckGo / Tavily)"]
     end
 
-    %% Client Connections
-    SPA -->|"HTTP / REST + JWT"| MW
-    IDE <-->|"stdio Transport"| FastMCP
-    AgentCLI <-->|"stdio Transport"| FastMCP
+    subgraph GenerationStage ["4. Self-RAG Verification Loop"]
+        direction TB
+        Generator["Contextual Generator<br/>(Claude Haiku / Strict Prompt)"]
+        NLIEval{"DeBERTa-v3 NLI<br/>Entailment Check"}
+        StrictRetry["Anti-Hallucination<br/>Regeneration Prompt"]
+        
+        Generator --> NLIEval
+        NLIEval -- "Contradiction / Hallucination<br/>(Retry <= 2)" --> StrictRetry
+        StrictRetry --> Generator
+    end
 
-    %% Gateway Pipeline
-    MW --> AuthTenancy
-    AuthTenancy --> REST
+    subgraph OutputStage ["5. Observability & Delivery"]
+        direction TB
+        FinalAnswer(["Verified Response<br/>+ Scored Citations [1][2]"])
+        Telemetry["LangSmith Observability<br/>(Spans, Traces, Prompt v1.0.0)"]
+    end
 
-    %% Gateway to Storage & RAG
-    REST --> Repo
-    FastMCP --> Repo
-    FastMCP --> RAGWorkflow
-    REST --> RAGWorkflow
-
-    Repo --> RelationalDB
-    Repo --> PGVectorDB
-
-    %% RAG Workflow Steps
-    RAGWorkflow --> PGVectorDB
-    Memory --> Retriever
-    Retriever --> DocGrader
-    DocGrader -->|"Relevant Chunks"| Generator
-    DocGrader -->|"Out of Scope"| WebSearch
-    Generator --> HallucinationGrader
-    HallucinationGrader -->|"Grounded"| FinalAnswer
-    HallucinationGrader -->|"Unverified (Retry)"| Generator
+    %% Cross-stage transitions (Left to Right)
+    Rewrite -->|"Standalone Query"| ConcurrentRetrieval
+    Reranker -->|"Top-K Candidates"| DocGrader
+    DocGrader -- "Relevant Chunks" --> Generator
+    DocGrader -- "Out of Scope / Low Score" --> WebSearch
     WebSearch --> FinalAnswer
+    NLIEval -- "Entailment Score >= 0.50" --> FinalAnswer
+    FinalAnswer -. "Live Telemetry" .-> Telemetry
+
+    %% Styling
+    classDef startEnd fill:#0284c7,stroke:#0369a1,color:#ffffff,stroke-width:2px;
+    classDef step fill:#f8fafc,stroke:#64748b,color:#0f172a,stroke-width:1.5px;
+    classDef decision fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px;
+    classDef retry fill:#fee2e2,stroke:#dc2626,color:#991b1b,stroke-width:1.5px;
+    classDef obs fill:#f0fdf4,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
+
+    class UserQuery,FinalAnswer startEnd;
+    class Memory,Rewrite,DenseSearch,SparseSearch,RRF,Reranker,Generator,WebSearch step;
+    class DocGrader,NLIEval decision;
+    class StrictRetry retry;
+    class Telemetry obs;
 ```
 
 ---
@@ -98,40 +107,74 @@ The assistant uses an adaptive **LangGraph state graph** with **sliding window c
 
 Nimbus exposes its multi-tenant Self-RAG knowledge base to external AI tooling and desktop assistants via a standard **FastMCP Server** (`app.mcp.server`) and includes an **Autonomous Tool-Calling Agent** (`app.mcp.agent`) acting as an MCP client over standard I/O (`stdio`).
 
-### MCP Architecture
+### MCP Architecture: Autonomous Agent & FastMCP Server
 
 ```mermaid
 flowchart LR
-    subgraph Host ["Host / Client Layer"]
-        Agent["Autonomous Agent<br/>(app/mcp/agent.py)"]
-        Claude["Claude Desktop / Cursor"]
+    %% Model Context Protocol (MCP) Architecture (Landscape Interview View)
+
+    subgraph Clients ["1. AI Host & Client Layer"]
+        direction TB
+        AgentCLI["Autonomous MCP Agent<br/>(app/mcp/agent.py)"]
+        IDE["Claude Desktop / Cursor<br/>(External AI Host)"]
+        ReActLoop["ReAct Reasoning Loop<br/>(Prompt -> Tool Use -> Synthesize)"]
+        AgentCLI --> ReActLoop
+        IDE --> ReActLoop
     end
 
-    subgraph MCP ["Model Context Protocol (JSON-RPC)"]
-        Stdio["Standard I/O (stdio) Transport"]
-        Discovery["Dynamic Tool Discovery<br/>(list_tools)"]
+    subgraph Protocol ["2. Protocol & Transport (JSON-RPC)"]
+        direction TB
+        StdioPipe["Bidirectional stdio Stream<br/>(Clean Subprocess Pipe)"]
+        Handshake["Dynamic Handshake<br/>(initialize + tools/list)"]
+        ToolCall["JSON-RPC Execution<br/>(tools/call)"]
+        StdioPipe --> Handshake
+        StdioPipe --> ToolCall
     end
 
-    subgraph Server ["FastMCP Server (app/mcp/server.py)"]
-        T1["list_workspaces"]
-        T2["semantic_search_chunks"]
-        T3["self_rag_query"]
+    subgraph Server ["3. FastMCP Server & Tenancy Guard"]
+        direction TB
+        MCPEngine["FastMCP Server<br/>(app/mcp/server.py)"]
+        TenantGuard["Tenant Isolation Guard<br/>(MCP_ALLOWED_TENANT_IDS)"]
+        MCPEngine --> TenantGuard
     end
 
-    subgraph Pipeline ["Self-RAG Pipeline (app/rag/)"]
-        Graph["LangGraph Workflow"]
-        PGVector["pgvector Store"]
-        Graders["Hallucination & Relevance Graders"]
-        Web["DuckDuckGo Fallback"]
+    subgraph Tools ["4. Exposed MCP Tool APIs"]
+        direction TB
+        T1["list_workspaces<br/>(Discover Active Tenants)"]
+        T2["semantic_search_chunks<br/>(Raw pgvector Vectors)"]
+        T3["self_rag_query<br/>(LangGraph Self-RAG Engine)"]
     end
 
-    Agent <--> Stdio
-    Claude <--> Stdio
-    Stdio <--> Server
-    Server --> T1 & T2 & T3
-    T2 --> PGVector
-    T3 --> Graph
-    Graph --> PGVector & Graders & Web
+    subgraph Backends ["5. Knowledge Plane & Observability"]
+        direction TB
+        PGVector[("PostgreSQL 16 (pgvector)<br/>Tenant-Isolated Chunks")]
+        LangGraphPipe["LangGraph Self-RAG<br/>(NLI Anti-Hallucination)"]
+        LangSmithTrace["LangSmith Tracing<br/>(@traceable Spans & Metrics)"]
+    end
+
+    %% Flow connections (Left to Right)
+    ReActLoop <-->|"stdio JSON-RPC"| StdioPipe
+    ToolCall -->|"Dispatch Tool Call"| MCPEngine
+    TenantGuard --> T1 & T2 & T3
+    
+    T1 -. "Tenant List JSON" .-> ReActLoop
+    T2 -->|"Vector Cosine Query"| PGVector
+    T3 -->|"Execute Adaptive Graph"| LangGraphPipe
+    LangGraphPipe --> PGVector
+    T3 -. "Telemetry Spans" .-> LangSmithTrace
+
+    %% Styling
+    classDef clientNode fill:#0284c7,stroke:#0369a1,color:#ffffff,stroke-width:2px;
+    classDef protoNode fill:#f1f5f9,stroke:#64748b,color:#0f172a,stroke-width:1.5px;
+    classDef serverNode fill:#ede7f6,stroke:#6d28d9,color:#3b0764,stroke-width:2px;
+    classDef toolNode fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:1.5px;
+    classDef dataNode fill:#f0fdf4,stroke:#16a34a,color:#14532d,stroke-width:1.5px;
+
+    class AgentCLI,IDE,ReActLoop clientNode;
+    class StdioPipe,Handshake,ToolCall protoNode;
+    class MCPEngine,TenantGuard serverNode;
+    class T1,T2,T3 toolNode;
+    class PGVector,LangGraphPipe,LangSmithTrace dataNode;
 ```
 
 ### Exposed MCP Tools

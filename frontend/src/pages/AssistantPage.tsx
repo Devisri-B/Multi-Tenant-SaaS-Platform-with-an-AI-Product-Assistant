@@ -120,6 +120,64 @@ export function AssistantPage() {
     }
   }
 
+  function scrollToCitation(messageId: string, index: number) {
+    const el = document.getElementById(`citation-${messageId}-${index}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      el.classList.add('citation--highlight')
+      setTimeout(() => {
+        el.classList.remove('citation--highlight')
+      }, 2000)
+    }
+  }
+
+  function renderBubbleContent(content: string, messageId: string) {
+    const regex = /(https?:\/\/[^\s<)]+)|\[(\d+)\]/g
+    const nodes: (string | JSX.Element)[] = []
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+
+    while ((match = regex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        nodes.push(content.substring(lastIndex, match.index))
+      }
+      if (match[1]) {
+        const url = match[1]
+        nodes.push(
+          <a
+            key={`link-${match.index}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="chat-link"
+          >
+            {url}
+          </a>
+        )
+      } else if (match[2]) {
+        const citIdx = match[2]
+        nodes.push(
+          <button
+            key={`cit-${match.index}`}
+            type="button"
+            className="citation-pill-ref"
+            onClick={() => scrollToCitation(messageId, parseInt(citIdx, 10))}
+            title={`View citation [${citIdx}]`}
+          >
+            [{citIdx}]
+          </button>
+        )
+      }
+      lastIndex = regex.lastIndex
+    }
+
+    if (lastIndex < content.length) {
+      nodes.push(content.substring(lastIndex))
+    }
+
+    return <p className="bubble__content">{nodes.length > 0 ? nodes : content}</p>
+  }
+
   return (
     <div className="page page--chat">
       <header className="page__head">
@@ -240,7 +298,7 @@ export function AssistantPage() {
 
             {messages.map((message) => (
               <article key={message.id} className={`bubble bubble--${message.role}`}>
-                <p className="bubble__content">{message.content}</p>
+                {renderBubbleContent(message.content, message.id)}
 
                 {/* Deterministic Evaluation Badges on Assistant Bubbles */}
                 {message.role === 'assistant' && message.evaluation ? (
@@ -296,36 +354,50 @@ export function AssistantPage() {
 
                 {message.citations.length > 0 ? (
                   <ol className="citations">
-                    {message.citations.map((citation, index) => (
-                      <li
-                        key={citation.chunk_id || `${citation.document_title}-${index}`}
-                        className="citation"
-                        onClick={() => void handleCitationClick(message, citation, index)}
-                      >
-                        <span className="citation__marker">[{index + 1}]</span>
-                        {citation.source_type === 'web' || citation.url ? (
-                          <a
-                            href={citation.url ?? '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="citation__title citation__link"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {citation.document_title}
-                          </a>
-                        ) : (
-                          <span className="citation__title citation__link" style={{ cursor: 'pointer' }}>
-                            {citation.document_title}
+                    {message.citations.map((citation, index) => {
+                      const citationId = `citation-${message.id}-${index + 1}`
+                      const isWeb = citation.source_type === 'web' || !!citation.url
+                      return (
+                        <li
+                          key={citation.chunk_id || `${citation.document_title}-${index}`}
+                          id={citationId}
+                          className={`citation ${isWeb ? 'citation--web' : ''}`}
+                          onClick={() => {
+                            void handleCitationClick(message, citation, index)
+                            if (citation.url) {
+                              window.open(citation.url, '_blank', 'noopener,noreferrer')
+                            }
+                          }}
+                          title={citation.url ? `Open external reference: ${citation.url}` : undefined}
+                        >
+                          <span className="citation__marker">[{index + 1}]</span>
+                          {isWeb ? (
+                            <a
+                              href={citation.url ?? '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="citation__title citation__link"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void handleCitationClick(message, citation, index)
+                              }}
+                            >
+                              {citation.document_title} <span className="citation__external-icon">↗</span>
+                            </a>
+                          ) : (
+                            <span className="citation__title citation__link">
+                              {citation.document_title}
+                            </span>
+                          )}
+                          <span className="citation__score">
+                            {citation.source_type === 'web'
+                              ? 'Online Search'
+                              : `${(citation.score * 100).toFixed(0)}% match`}
                           </span>
-                        )}
-                        <span className="citation__score">
-                          {citation.source_type === 'web'
-                            ? 'Online Search'
-                            : `${(citation.score * 100).toFixed(0)}% match`}
-                        </span>
-                        <p className="citation__excerpt">{citation.excerpt}</p>
-                      </li>
-                    ))}
+                          <p className="citation__excerpt">{citation.excerpt}</p>
+                        </li>
+                      )
+                    })}
                   </ol>
                 ) : null}
               </article>

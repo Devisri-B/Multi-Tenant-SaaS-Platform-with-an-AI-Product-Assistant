@@ -47,6 +47,19 @@ def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences while protecting abbreviations and initials."""
+    protected = re.sub(r"\b([A-Z])\.", r"\1__DOT__", text)
+    protected = re.sub(
+        r"\b(U\.S\.|e\.g\.|i\.e\.|Mr\.|Mrs\.|Dr\.)",
+        lambda m: m.group(0).replace(".", "__DOT__"),
+        protected,
+        flags=re.IGNORECASE,
+    )
+    parts = re.split(r"(?<=[.!?])\s+", protected)
+    return [p.replace("__DOT__", ".").strip() for p in parts if p.strip()]
+
+
 class FakeEmbeddings(EmbeddingProvider):
     """Hashed bag-of-words embeddings.
 
@@ -169,17 +182,46 @@ class FakeChat(ChatProvider):
 
         if web_match and web_match.group(1).strip():
             web_context = web_match.group(1)
-            keywords = {token for token in _tokenize(question) if len(token) > 3}
-            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", web_context) if s.strip()]
-            scored = sorted(
-                sentences,
-                key=lambda s: len(keywords & set(_tokenize(s))),
-                reverse=True,
-            )
-            best = [s for s in scored[:3] if s]
-            body = " ".join(best) if best else (sentences[0] if sentences else web_context[:200])
+            keywords = {token for token in _tokenize(question) if len(token) > 2}
+
+            # Parse each result block: [index] Title: ... URL: ... Excerpt: ...
+            blocks = re.split(r"\[(\d+)\]\s*Title:\s*", web_context)
+            candidate_sentences: list[tuple[int, int, str]] = []
+
+            for i in range(1, len(blocks), 2):
+                idx = int(blocks[i])
+                block_text = blocks[i + 1] if i + 1 < len(blocks) else ""
+                snip_match = re.search(r"Excerpt:\s*(.*?)(?=\n\n|\Z)", block_text, flags=re.DOTALL)
+                excerpt = snip_match.group(1).strip() if snip_match else block_text.strip()
+                cleaned_excerpt = re.sub(r"\[[a-zA-Z0-9]+\]", "", excerpt)
+                sentences = _split_sentences(cleaned_excerpt)
+                for s in sentences:
+                    s_tokens = set(_tokenize(s))
+                    score = len(keywords & s_tokens)
+                    candidate_sentences.append((score, idx, s))
+
+            # Pick the top informative sentences matching question keywords
+            candidate_sentences.sort(key=lambda x: x[0], reverse=True)
+            picked: list[str] = []
+            seen: set[str] = set()
+            for score, idx, s in candidate_sentences:
+                s_clean = re.sub(r"\s+", " ", s.strip().rstrip("."))
+                if s_clean and s_clean not in seen:
+                    seen.add(s_clean)
+                    picked.append(f"{s_clean} [{idx}].")
+                if len(picked) >= 3:
+                    break
+
+            if picked:
+                body = " ".join(picked)
+            else:
+                snip_match = re.search(r"Excerpt:\s*(.*?)(?=\n\n|\Z)", web_context, flags=re.DOTALL)
+                first_snip = snip_match.group(1).strip() if snip_match else web_context[:200].strip()
+                first_clean = re.sub(r"\[[a-zA-Z0-9]+\]", "", first_snip).rstrip(".")
+                body = f"{first_clean} [1]."
+
             return (
-                f"This answer was found via online search (not in workspace documentation): {body}"
+                f"This answer was found via online search (not in workspace documentation):\n\n{body}"
             )
 
         # Standard workspace docs context
